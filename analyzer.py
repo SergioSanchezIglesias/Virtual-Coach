@@ -26,6 +26,12 @@ BRAKE_MIN_DUR = 0.20    # segundos minimos por encima de BRAKE_OFF
 THROTTLE_ON = 0.20      # apertura de gas que cuenta como "vuelve a acelerar"
 MERGE_DIST = 40.0       # metros: eventos mas juntos que esto se fusionan
 
+# Lifts: curvas rapidas que se toman LEVANTANDO el gas, sin llegar a frenar.
+LIFT_FULL = 0.90        # gas considerado "pleno" del que se levanta
+LIFT_TARGET = 0.70      # tiene que caer al menos hasta aqui para contar
+LIFT_NO_BRAKE = 0.08    # si el freno supera esto, es una frenada, no un lift
+LIFT_MIN_DUR = 0.30     # segundos sostenido (descarta microblips del pie)
+
 
 def load_lap(path: str) -> pd.DataFrame:
     """Carga el CSV y normaliza lo minimo imprescindible."""
@@ -155,6 +161,49 @@ def merge_close(zones: list[dict], track_length: float, min_gap: float) -> list[
     return merged
 
 
+def detect_lifts(df: pd.DataFrame, cfg) -> list[dict]:
+    """Zonas donde se LEVANTA el gas sin frenar (curvas rapidas de solo alzar).
+
+    Un lift es una caida desde gas pleno que se sostiene parcial SIN que el
+    freno aparezca. Definirlo asi lo separa por construccion de:
+      - las frenadas    -> ahi el freno sube por encima de lift_no_brake
+      - las salidas de curva -> ahi el gas SUBE desde cero, no cae desde pleno
+    El aviso cae donde el pie ROMPE desde pleno, el analogo al primer contacto
+    con el freno en las frenadas.
+    """
+    thr = df["Throttle"].to_numpy()
+    brk = df["Brake"].to_numpy()
+    pos = df["LapDistPct"].to_numpy()
+    speed = df["Speed"].to_numpy()
+    n = len(df)
+
+    lifts = []
+    i = 1
+    while i < n:
+        # Transicion pleno -> no-pleno: el pie empieza a levantar.
+        if thr[i - 1] >= cfg.lift_full and thr[i] < cfg.lift_full:
+            start = i - 1
+            j = i
+            min_thr, max_brk = thr[i], brk[i]
+            while j < n and thr[j] < cfg.lift_full:
+                min_thr = min(min_thr, thr[j])
+                max_brk = max(max_brk, brk[j])
+                j += 1
+            dur = (j - start) / SAMPLE_RATE
+            if (min_thr < cfg.lift_target
+                    and max_brk < cfg.lift_no_brake
+                    and dur >= cfg.lift_min_dur):
+                lifts.append({
+                    "lift_pos": float(pos[start]),
+                    "lift_speed_ms": float(speed[start]),
+                    "lift_min_throttle": round(float(min_thr), 2),
+                })
+            i = j
+        else:
+            i += 1
+    return lifts
+
+
 def print_table(zones: list[dict], track_length: float) -> None:
     print(f"\n{len(zones)} zonas de frenada detectadas\n")
     print(f"{'#':>2} {'freno':>7} {'m':>6} {'v_ent':>6} {'pico':>5} "
@@ -172,7 +221,7 @@ def print_table(zones: list[dict], track_length: float) -> None:
     print()
 
 
-def to_reference(zones: list[dict], args) -> dict:
+def to_reference(zones: list[dict], lifts: list[dict], args) -> dict:
     """Aplana las zonas a la lista de eventos que consume el coach."""
     events = []
     for z in zones:
@@ -186,6 +235,12 @@ def to_reference(zones: list[dict], args) -> dict:
             "type": "throttle",
             "pos": round(z["throttle_pos"], 6),
             "speed_ms": round(z["throttle_speed_ms"], 2),
+        })
+    for lift in lifts:
+        events.append({
+            "type": "lift",
+            "pos": round(lift["lift_pos"], 6),
+            "speed_ms": round(lift["lift_speed_ms"], 2),
         })
     events.sort(key=lambda e: e["pos"])
 
@@ -217,6 +272,10 @@ def main():
     ap.add_argument("--brake-min-dur", type=float, default=BRAKE_MIN_DUR)
     ap.add_argument("--throttle-on", type=float, default=THROTTLE_ON)
     ap.add_argument("--merge-dist", type=float, default=MERGE_DIST)
+    ap.add_argument("--lift-full", type=float, default=LIFT_FULL)
+    ap.add_argument("--lift-target", type=float, default=LIFT_TARGET)
+    ap.add_argument("--lift-no-brake", type=float, default=LIFT_NO_BRAKE)
+    ap.add_argument("--lift-min-dur", type=float, default=LIFT_MIN_DUR)
     args = ap.parse_args()
 
     df = load_lap(args.csv)
@@ -230,8 +289,17 @@ def main():
     zones = detect_events(df, args.track_length, args)
     print_table(zones, args.track_length)
 
+    lifts = detect_lifts(df, args)
+    if lifts:
+        print(f"{len(lifts)} lifts (levantar sin frenar):")
+        for lift in lifts:
+            print(f"  {lift['lift_pos'] * 100:6.2f}%  "
+                  f"{lift['lift_speed_ms'] * 3.6:3.0f} km/h  "
+                  f"gas hasta {lift['lift_min_throttle']:.2f}")
+        print()
+
     if args.output:
-        ref = to_reference(zones, args)
+        ref = to_reference(zones, lifts, args)
         with open(args.output, "w", encoding="utf-8") as fh:
             json.dump(ref, fh, indent=2)
         print(f"Escrito {args.output} ({len(ref['events'])} eventos)")

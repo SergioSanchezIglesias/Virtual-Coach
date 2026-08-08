@@ -133,6 +133,11 @@ class Coach:
             "count": "  ."
             if console
             else make_tone(cfg.brake_freq, cfg.count_ms, volume=cfg.count_volume),
+            # Lift = levantar sin frenar. Tono propio, entre el grave del freno
+            # y el agudo del gas, para que no se confunda con ninguno.
+            "lift": "SUELTA"
+            if console
+            else make_tone(cfg.lift_freq, cfg.beep_ms),
         }
 
     def gap_to(self, event_pos: float, pos: float) -> float:
@@ -259,6 +264,7 @@ def main():
     ap.add_argument("--count-volume", type=float, default=0.20)
     ap.add_argument("--brake-freq", type=float, default=620.0)
     ap.add_argument("--throttle-freq", type=float, default=1050.0)
+    ap.add_argument("--lift-freq", type=float, default=820.0)
     ap.add_argument("--beep-ms", type=int, default=90)
     ap.add_argument("-q", "--quiet", dest="verbose", action="store_false")
     cfg = ap.parse_args()
