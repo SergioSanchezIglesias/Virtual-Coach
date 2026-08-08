@@ -14,9 +14,11 @@ Trabajamos en español.
 |---|---|---|
 | `analyzer.py` | CSV de Garage61 → JSON de eventos | funcionando y validado; estima la longitud sola |
 | `source.py` | telemetría: replay de CSV o iRacing en vivo | replay validado; `IRacingSource` **validado en pista** |
-| `coach.py` | bucle, anticipación, audio y voz | pitidos validados en pista; **voz sin probar** |
-| `gui.py` | ventana para elegir referencia y lanzar el coach | funciona; **sin probar en Windows** (en Mac no pinta, ver Entorno) |
-| `gen_voces.py` | genera los clips de voz con `say` (macOS), se versionan | funciona |
+| `coach.py` | bucle, anticipación, audio y voz | validado en pista (Hockenheim y Winton) |
+| `gui.py` | ventana para elegir referencia y lanzar el coach | validada en Windows |
+| `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
+| `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
+| `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -159,14 +161,24 @@ pronto.
   Python de Homebrew lo arreglaría y sigue pendiente
 - `.gitignore` excluye los CSV crudos; los JSON de referencia sí se versionan
 
+## Empaquetado (.exe)
+
+El `.exe` se construye **en Windows** (el binario es de Windows; en el Mac solo
+se valida la receta). `app.py` es un punto de entrada único: la GUI se lanza a sí
+misma como `VirtualCoach.exe coach ...` en vez de `python coach.py`, porque en un
+`.exe` no hay python ni `.py` sueltos (ver `_tool_cmd` en gui.py y `_base_dir` en
+coach.py con `sys._MEIPASS`). Es `--onedir` (carpeta portable), no `--onefile`,
+para que esas re-invocaciones no re-extraigan el bundle. En Windows:
+
+    pip install pyinstaller
+    pyinstaller VirtualCoach.spec
+    # -> dist\VirtualCoach\VirtualCoach.exe  (carpeta portable, sin Python)
+
+Validado en Mac: construye, empaqueta `voces/`, y el binario corre el coach con
+audio y voz encontrando los clips del bundle. En Windows falta estrenarlo.
+
 ## Siguiente paso
 
-Estrenar la **voz** en Windows (casilla "Voz" en la GUI, o `--voice`): confirmar
-que se oye bien la secuencia voz → ticks → pitido, que las marchas cuadran con lo
-que haces, y ajustar al oído si hace falta (la voz se cambia en `gen_voces.py`).
-La voz suena algo más alta que los pitidos; si molesta, igualar niveles. Recordar
-llevarse un CSV al PC: los `*.csv` están en `.gitignore`, no viajan en el repo.
-
-Después: la Fase C, empaquetar en un `.exe` con PyInstaller (revisar antes el
-punto del subprocess; ahora hay que incluir también la carpeta `voces/`). Y en
-pista, seguir afinando `--lead` (0.35 s por defecto).
+Construir el `.exe` en Windows y estrenarlo. Y en pista, seguir afinando `--lead`
+(0.35 s por defecto). Pendiente menor: la voz suena algo más alta que los pitidos;
+si molesta, igualar niveles.
