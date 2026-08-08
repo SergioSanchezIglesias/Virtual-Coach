@@ -73,19 +73,30 @@ class AudioEngine:
 
     def __init__(self, blocksize: int = 128):
         import sounddevice as sd  # import tardio: el modo consola no lo necesita
+        import threading
 
-        self._buf: np.ndarray | None = None
-        self._idx = 0
+        # Mezclador: varios sonidos suenan A LA VEZ en vez de cortarse. Asi la
+        # voz de preparacion y el pitido del punto conviven, y el aviso de una
+        # curva no pisa el de la siguiente (critico donde las curvas van juntas,
+        # como Winton). Un lock protege la lista entre el hilo de audio y el de
+        # control; las operaciones son sobre una lista corta, no molestan.
+        self._active: list[list] = []  # cada item: [buffer, indice]
+        self._lock = threading.Lock()
 
         def callback(outdata, frames, time_info, status):
-            outdata.fill(0)
-            if self._buf is None:
-                return
-            chunk = self._buf[self._idx : self._idx + frames]
-            outdata[: len(chunk), 0] = chunk
-            self._idx += len(chunk)
-            if self._idx >= len(self._buf):
-                self._buf = None
+            mix = np.zeros(frames, dtype=np.float32)
+            with self._lock:
+                still = []
+                for item in self._active:
+                    buf, idx = item
+                    chunk = buf[idx : idx + frames]
+                    mix[: len(chunk)] += chunk
+                    item[1] = idx + len(chunk)
+                    if item[1] < len(buf):
+                        still.append(item)
+                self._active = still
+            np.clip(mix, -1.0, 1.0, out=mix)  # evitar saturacion al sumar
+            outdata[:, 0] = mix
 
         self.stream = sd.OutputStream(
             samplerate=SR,
@@ -98,8 +109,8 @@ class AudioEngine:
         self.latency_ms = self.stream.latency * 1000
 
     def play(self, tone: np.ndarray):
-        self._buf = tone
-        self._idx = 0
+        with self._lock:
+            self._active.append([tone, 0])
 
     def close(self):
         self.stream.stop()
