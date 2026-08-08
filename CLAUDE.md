@@ -12,14 +12,18 @@ Trabajamos en español.
 
 | módulo | qué hace | estado |
 |---|---|---|
-| `analyzer.py` | CSV de Garage61 → JSON de eventos | funcionando y validado |
-| `source.py` | telemetría: replay de CSV o iRacing en vivo | replay validado; `IRacingSource` **sin probar nunca** |
-| `coach.py` | bucle, anticipación y audio | funcionando en Mac con replay |
+| `analyzer.py` | CSV de Garage61 → JSON de eventos | funcionando y validado; estima la longitud sola |
+| `source.py` | telemetría: replay de CSV o iRacing en vivo | replay validado; `IRacingSource` **validado en pista** |
+| `coach.py` | bucle, anticipación y audio | validado en pista con iRacing |
+| `gui.py` | ventana para elegir referencia y lanzar el coach | funciona; **sin probar en Windows** (en Mac no pinta, ver Entorno) |
 
-Validado hasta ahora: los 12 avisos por vuelta caen donde deben, el paso por
-meta se resuelve, la vuelta 2 rearma sola, y los pitidos se oyen.
+Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
+resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
+funcionó en pista real. La cuenta atrás quedó afinada al oído en
+`--countdown 3 --countdown-interval 0.5`.
 
-Pendiente: probarlo en pista. Nadie ha ejecutado `IRacingSource` todavía.
+Pendiente: estrenar `gui.py` en Windows (en el Mac la ventana abre vacía por
+el Tk 8.5 viejo; ver Entorno).
 
 ## Arquitectura
 
@@ -62,6 +66,19 @@ el punto de frenada ajeno no le aplica. Existe `--skip-mismatch` para callarlo.
 tonos pregenerados en RAM. Nada de abrir streams ni cargar ficheros por aviso.
 Los tonos llevan envolvente de 6 ms para no hacer click.
 
+**La longitud del circuito se estima integrando la velocidad**, no se teclea:
+`track_length ≈ Σ Speed / 60`. Validado en Hockenheim (4516 vs 4574 m
+oficiales, 1.3 %). Como el aviso va en tiempo con `--margin` de colchón, ese
+1-2 % son milisegundos. `analyzer.py` la calcula sola si no le pasas
+`--track-length`. Es lo que permite usar cualquier circuito de iRacing sin
+trabajo manual por pista.
+
+**La GUI lanza `analyzer.py` y `coach.py` como procesos aparte (subprocess),
+no los importa.** El core validado en pista no se toca ni se acopla: la ventana
+solo teclea por ti los mismos comandos, así que un fallo en la GUI no puede
+tumbar el coach. Ojo al empaquetar el `.exe`: dentro de un ejecutable no hay un
+`python` suelto al que llamar, habrá que revisar este punto.
+
 ## Contexto que importa
 
 La referencia es de **otro piloto más rápido** (1 s). Eso es deliberado pero
@@ -88,14 +105,18 @@ pronto.
 - Desarrollo en **Mac**; iRacing está en una **máquina Windows aparte**
 - `pyirsdk` es solo Windows y solo lo toca `IRacingSource`
 - Venv en `.venv/`, creado con `--copies`. Python 3.9 de las Command Line
-  Tools: conviene migrar a un Python de Homebrew más moderno en algún momento
+  Tools con **Tk 8.5**: `gui.py` abre vacía en el Mac por un bug viejo de ese
+  Tk (los widgets no se pintan). En Windows (Tk 8.6) no ocurre. Migrar a un
+  Python de Homebrew lo arreglaría y sigue pendiente
 - `.gitignore` excluye los CSV crudos; los JSON de referencia sí se versionan
 
 ## Siguiente paso
 
-Llevarlo al PC de Windows. Primero con `--replay` para validar entorno y
-anotar la latencia de audio en WASAPI (distinta a la de CoreAudio), y solo
-después con iRacing abierto para estrenar `IRacingSource`.
+Estrenar `gui.py` en el PC de Windows: elegir un CSV de referencia, procesarlo
+y darle a Empezar. Primero en "modo prueba" (replay) para confirmar que la
+ventana pinta y suena; luego con iRacing en vivo. Recordar llevarse un CSV al
+PC: los `*.csv` están en `.gitignore`, no viajan en el repo.
 
-Después, en pista: afinar `--lead` (0.35 s por defecto) y decidir si la
-cuenta atrás ayuda o agobia.
+Después: la Fase C, empaquetar en un `.exe` con PyInstaller (revisar antes el
+punto del subprocess). Y en pista, seguir afinando `--lead` (0.35 s por
+defecto); la cuenta atrás ya quedó en 3 ticks cada 0.5 s.
