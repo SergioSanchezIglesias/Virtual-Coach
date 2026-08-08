@@ -1,0 +1,7 @@
+# Las dos maquinas
+numpy
+pandas
+sounddevice   # audio de baja latencia, funciona en macOS y Windows
+
+# Solo en el PC de juego (Windows). En Mac ni se instala ni hace falta.
+# pyirsdk

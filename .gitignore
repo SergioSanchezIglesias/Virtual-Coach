@@ -1,0 +1,13 @@
+# Entorno
+.venv/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Telemetria cruda: pesa mucho y siempre puedes volver a exportarla de
+# Garage61. Las referencias procesadas (*.json) SI se versionan: son
+# pequenas y son el resultado de tu trabajo de afinado.
+*.csv
+*.ibt

@@ -1,0 +1,76 @@
+{
+  "sim": "iracing",
+  "track": "hockenheim_gp",
+  "car": "ferrari_296_gt3",
+  "track_length_m": 4574.0,
+  "laptime_s": 99.156,
+  "source": "garage61",
+  "events": [
+    {
+      "type": "brake",
+      "pos": 0.154073,
+      "speed_ms": 63.41,
+      "peak": 1.0
+    },
+    {
+      "type": "throttle",
+      "pos": 0.186269,
+      "speed_ms": 20.88
+    },
+    {
+      "type": "brake",
+      "pos": 0.422823,
+      "speed_ms": 69.91,
+      "peak": 0.94
+    },
+    {
+      "type": "throttle",
+      "pos": 0.46148,
+      "speed_ms": 11.62
+    },
+    {
+      "type": "brake",
+      "pos": 0.591092,
+      "speed_ms": 62.79,
+      "peak": 1.0
+    },
+    {
+      "type": "throttle",
+      "pos": 0.619768,
+      "speed_ms": 21.65
+    },
+    {
+      "type": "brake",
+      "pos": 0.730927,
+      "speed_ms": 58.47,
+      "peak": 0.36
+    },
+    {
+      "type": "throttle",
+      "pos": 0.755227,
+      "speed_ms": 43.18
+    },
+    {
+      "type": "brake",
+      "pos": 0.80363,
+      "speed_ms": 55.21,
+      "peak": 0.88
+    },
+    {
+      "type": "throttle",
+      "pos": 0.833374,
+      "speed_ms": 23.77
+    },
+    {
+      "type": "brake",
+      "pos": 0.882962,
+      "speed_ms": 48.99,
+      "peak": 0.4
+    },
+    {
+      "type": "throttle",
+      "pos": 0.909151,
+      "speed_ms": 29.59
+    }
+  ]
+}
