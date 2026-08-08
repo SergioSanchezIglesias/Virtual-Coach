@@ -130,7 +130,10 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
                 "full_throttle_pos": float(pos[full]),
                 "brake_pos": float(pos[start]),
                 "brake_speed_ms": float(speed[start]),
-                "brake_gear": int(gear[start]),
+                # Marcha de la CURVA (en el punto de gas), no la del inicio de
+                # frenada: al piloto le sirve saber a que marcha reduce, no
+                # desde cual. En una horquilla frenas en 5a pero la tomas en 1a.
+                "gear": int(gear[gas]),
                 "peak_brake": peak,
                 "brake_duration_s": round(duration, 3),
                 "min_speed_ms": float(speed[start:gas].min()),
@@ -161,6 +164,7 @@ def merge_close(zones: list[dict], track_length: float, min_gap: float) -> list[
             prev["min_speed_ms"] = min(prev["min_speed_ms"], z["min_speed_ms"])
             prev["throttle_pos"] = z["throttle_pos"]
             prev["throttle_speed_ms"] = z["throttle_speed_ms"]
+            prev["gear"] = z["gear"]  # la marcha de la curva es la del apoyo final
         else:
             merged.append(z)
     return merged
@@ -245,6 +249,7 @@ def to_reference(zones: list[dict], lifts: list[dict], args) -> dict:
             "pos": round(z["brake_pos"], 6),
             "speed_ms": round(z["brake_speed_ms"], 2),
             "peak": round(z["peak_brake"], 2),
+            "gear": z["gear"],  # marcha de la curva, para la voz
         })
         events.append({
             "type": "throttle",

@@ -16,12 +16,27 @@ import json
 import math
 import sys
 import time
+import wave
+from pathlib import Path
 
 import numpy as np
 
 from source import make_source
 
 SR = 44100  # frecuencia de muestreo del audio
+
+# Voz: clips pregenerados (ver gen_voces.py). El coach los concatena en RAM.
+VOCES_DIR = Path(__file__).resolve().parent / "voces"
+VOICE_GAP = 0.30  # segundos de colchon entre el fin de la voz y el primer tick
+CLIP_NAMES = ("frena", "suelta", "p20", "p40", "p60", "p80", "p100",
+              "g1", "g2", "g3", "g4", "g5", "g6")
+
+
+def load_wav(path: Path) -> np.ndarray:
+    """Carga un WAV PCM 16-bit mono a float32 [-1, 1]. Solo stdlib."""
+    with wave.open(str(path)) as w:
+        data = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
+    return data.astype(np.float32) / 32768.0
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +155,56 @@ class Coach:
             else make_tone(cfg.lift_freq, cfg.beep_ms),
         }
 
+        # --- Voz (opcional): frase de preparacion antes de cada frenada/lift ---
+        self.voice = getattr(cfg, "voice", False)
+        if self.voice:
+            clips = {} if console else {
+                n: load_wav(VOCES_DIR / f"{n}.wav") for n in CLIP_NAMES
+            }
+            for ev in self.events:
+                if console:
+                    ev["_voice"] = self._voice_text(ev)
+                    ev["_voice_dur"] = 1.6 if ev["_voice"] else 0.0
+                else:
+                    buf = self._voice_buffer(ev, clips)
+                    ev["_voice"] = buf
+                    ev["_voice_dur"] = len(buf) / SR if buf is not None else 0.0
+
+    @staticmethod
+    def _pct_clip(peak: float) -> str:
+        """Redondea el pico de freno a un tramo de 20 % -> nombre de clip."""
+        tramo = max(1, min(5, round(peak * 5)))
+        return f"p{tramo * 20}"
+
+    def _voice_buffer(self, ev, clips):
+        """Concatena los clips de una frase: 'frena' + tramo% + marcha."""
+        if ev["type"] == "brake":
+            parts = [clips["frena"], clips[self._pct_clip(ev.get("peak", 1.0))]]
+            g = ev.get("gear")
+            if g and 1 <= g <= 6:
+                parts.append(clips[f"g{g}"])
+        elif ev["type"] == "lift":
+            parts = [clips["suelta"]]
+        else:
+            return None
+        gap = np.zeros(int(SR * 0.04), dtype=np.float32)  # 40 ms entre palabras
+        buf = parts[0]
+        for p in parts[1:]:
+            buf = np.concatenate([buf, gap, p])
+        return buf
+
+    def _voice_text(self, ev):
+        """La misma frase, en texto, para el modo consola."""
+        if ev["type"] == "brake":
+            parts = ["Frena", f"{self._pct_clip(ev.get('peak', 1.0))[1:]}%"]
+            g = ev.get("gear")
+            if g and 1 <= g <= 6:
+                parts.append(f"{g}a")
+            return "[voz] " + ", ".join(parts)
+        if ev["type"] == "lift":
+            return "[voz] Suelta"
+        return None
+
     def gap_to(self, event_pos: float, pos: float) -> float:
         """Metros que faltan hasta el evento, resolviendo el paso por meta."""
         delta = event_pos - pos
@@ -171,6 +236,17 @@ class Coach:
             # Solo las frenadas llevan cuenta atras. El aviso de gas es un
             # "ya puedes", no algo para lo que haga falta prepararse.
             n_ticks = self.cfg.countdown if ev["type"] == "brake" else 0
+
+            # Voz de preparacion: suena ANTES de la cuenta atras, con antelacion
+            # suficiente para terminar antes del primer tick. La voz dice "que"
+            # viene; los ticks el "cuando"; el pitido el "ahora".
+            if self.voice and ev.get("_voice") is not None:
+                if (i, -1) not in self.fired:
+                    voice_lead = (lead + n_ticks * self.cfg.countdown_interval
+                                  + ev["_voice_dur"] + VOICE_GAP)
+                    if ttc <= voice_lead:
+                        self.fired.add((i, -1))
+                        self.engine.play(ev["_voice"])
 
             # Se recorre de k mas alto (el tick mas temprano) a k = 0, que es
             # el aviso de verdad.
@@ -265,6 +341,10 @@ def main():
     ap.add_argument("--brake-freq", type=float, default=620.0)
     ap.add_argument("--throttle-freq", type=float, default=1050.0)
     ap.add_argument("--lift-freq", type=float, default=820.0)
+    ap.add_argument(
+        "--voice", action="store_true",
+        help="voz de preparacion antes de cada frenada/lift (ademas de los pitidos)",
+    )
     ap.add_argument("--beep-ms", type=int, default=90)
     ap.add_argument("-q", "--quiet", dest="verbose", action="store_false")
     cfg = ap.parse_args()

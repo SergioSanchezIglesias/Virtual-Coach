@@ -10,7 +10,8 @@
       "type": "brake",
       "pos": 0.036874,
       "speed_ms": 61.78,
-      "peak": 0.34
+      "peak": 0.34,
+      "gear": 4
     },
     {
       "type": "throttle",
@@ -21,7 +22,8 @@
       "type": "brake",
       "pos": 0.154073,
       "speed_ms": 63.41,
-      "peak": 1.0
+      "peak": 1.0,
+      "gear": 2
     },
     {
       "type": "throttle",
@@ -32,7 +34,8 @@
       "type": "brake",
       "pos": 0.422823,
       "speed_ms": 69.91,
-      "peak": 0.94
+      "peak": 0.94,
+      "gear": 1
     },
     {
       "type": "throttle",
@@ -43,7 +46,8 @@
       "type": "brake",
       "pos": 0.591092,
       "speed_ms": 62.79,
-      "peak": 1.0
+      "peak": 1.0,
+      "gear": 2
     },
     {
       "type": "throttle",
@@ -64,7 +68,8 @@
       "type": "brake",
       "pos": 0.730927,
       "speed_ms": 58.47,
-      "peak": 0.36
+      "peak": 0.36,
+      "gear": 3
     },
     {
       "type": "throttle",
@@ -75,7 +80,8 @@
       "type": "brake",
       "pos": 0.80363,
       "speed_ms": 55.21,
-      "peak": 0.88
+      "peak": 0.88,
+      "gear": 2
     },
     {
       "type": "throttle",
@@ -86,7 +92,8 @@
       "type": "brake",
       "pos": 0.882962,
       "speed_ms": 48.99,
-      "peak": 0.4
+      "peak": 0.4,
+      "gear": 2
     },
     {
       "type": "throttle",

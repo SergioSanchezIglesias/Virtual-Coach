@@ -67,10 +67,18 @@ class CoachGUI:
             text="Modo prueba: reproducir el CSV en vez de leer iRacing",
             variable=self.replay_var,
         )
-        self.replay_chk.grid(row=4, column=0, sticky="w", pady=(4, 4))
+        self.replay_chk.grid(row=4, column=0, sticky="w", pady=(4, 2))
+
+        self.voice_var = tk.BooleanVar(value=True)
+        self.voice_chk = ttk.Checkbutton(
+            frm,
+            text="Voz: \"Frena, 40%, tercera\" antes de cada aviso",
+            variable=self.voice_var,
+        )
+        self.voice_chk.grid(row=5, column=0, sticky="w", pady=(0, 6))
 
         btns = ttk.Frame(frm)
-        btns.grid(row=5, column=0, sticky="ew", pady=(0, 10))
+        btns.grid(row=6, column=0, sticky="ew", pady=(0, 10))
         btns.columnconfigure(0, weight=1)
         btns.columnconfigure(1, weight=1)
         self.start_btn = ttk.Button(
@@ -86,8 +94,8 @@ class CoachGUI:
         self.log_box = scrolledtext.ScrolledText(
             frm, height=12, state="disabled", wrap="word", font=("Menlo", 11)
         )
-        self.log_box.grid(row=6, column=0, sticky="nsew")
-        frm.rowconfigure(6, weight=1)
+        self.log_box.grid(row=7, column=0, sticky="nsew")
+        frm.rowconfigure(7, weight=1)
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.log("Elige una vuelta de referencia para empezar.")
@@ -138,6 +146,8 @@ class CoachGUI:
         ]
         if self.replay_var.get() and self.csv is not None:
             cmd += ["--replay", str(self.csv)]
+        if self.voice_var.get():
+            cmd += ["--voice"]
 
         modo = "prueba (replay)" if self.replay_var.get() else "iRacing en vivo"
         self.log(f"\n▶  Arrancando coach — modo {modo}…")
@@ -154,6 +164,7 @@ class CoachGUI:
         self.stop_btn.config(state="normal")
         self.pick_btn.config(state="disabled")
         self.replay_chk.config(state="disabled")
+        self.voice_chk.config(state="disabled")
 
     def _pump_output(self) -> None:
         assert self.coach_proc is not None and self.coach_proc.stdout is not None
@@ -171,6 +182,7 @@ class CoachGUI:
         self.stop_btn.config(state="disabled")
         self.pick_btn.config(state="normal")
         self.replay_chk.config(state="normal")
+        self.voice_chk.config(state="normal")
         self.start_btn.config(state="normal" if self.reference else "disabled")
 
     # -----------------------------------------------------------------------
