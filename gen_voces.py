@@ -16,7 +16,9 @@ decenas de clips.
 import subprocess
 from pathlib import Path
 
-VOZ = "Eddy"  # es_ES; cambiable (Monica, Flo, Paulina...) via `say -v '?'`
+# Nombre COMPLETO con locale: "Eddy" a secas existe en 14 idiomas y `say`
+# elegiria cualquiera. Este formato (el que lista `say -v '?'`) fuerza es_ES.
+VOZ = "Eddy (Español (España))"
 OUT = Path(__file__).resolve().parent / "voces"
 
 # nombre de fichero -> texto a pronunciar
