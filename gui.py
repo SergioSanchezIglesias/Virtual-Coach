@@ -27,9 +27,9 @@ from tkinter import filedialog, scrolledtext, ttk
 HERE = Path(__file__).resolve().parent
 PYTHON = sys.executable  # el interprete del venv, no un 'python' cualquiera del PATH
 
-# Parametros de aviso por defecto: los que Sergio valido al oido en Hockenheim.
+# Parametros de aviso por defecto, afinados al oido en pista.
 COUNTDOWN = "3"
-COUNTDOWN_INTERVAL = "0.5"
+COUNTDOWN_INTERVAL = "0.75"
 
 
 class CoachGUI:
