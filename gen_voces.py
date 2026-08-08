@@ -16,7 +16,7 @@ decenas de clips.
 import subprocess
 from pathlib import Path
 
-VOZ = "Monica"  # es_ES; cambiable (Eddy, Flo, Paulina...) via `say -v '?'`
+VOZ = "Eddy"  # es_ES; cambiable (Monica, Flo, Paulina...) via `say -v '?'`
 OUT = Path(__file__).resolve().parent / "voces"
 
 # nombre de fichero -> texto a pronunciar
