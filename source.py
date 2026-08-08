@@ -30,11 +30,12 @@ SAMPLE_RATE = 60.0
 @dataclass(frozen=True)
 class Frame:
     """Un instante de telemetria, en unidades normalizadas."""
-    t: float           # segundos desde que arranco la fuente
-    lap_pos: float     # 0.0 - 1.0 sobre la vuelta
-    speed_ms: float    # metros por segundo
-    brake: float       # 0.0 - 1.0
-    throttle: float    # 0.0 - 1.0
+
+    t: float  # segundos desde que arranco la fuente
+    lap_pos: float  # 0.0 - 1.0 sobre la vuelta
+    speed_ms: float  # metros por segundo
+    brake: float  # 0.0 - 1.0
+    throttle: float  # 0.0 - 1.0
     gear: int
     lap: int
     on_track: bool
@@ -60,6 +61,7 @@ class TelemetrySource:
 # Reproduccion de CSV — el caballo de batalla del desarrollo
 # ---------------------------------------------------------------------------
 
+
 class ReplaySource(TelemetrySource):
     """Convierte un CSV de Garage61 en un flujo temporizado de Frames.
 
@@ -72,7 +74,7 @@ class ReplaySource(TelemetrySource):
     como pueda la maquina, para tests automaticos.
     """
 
-    def __init__(self, csv_path: str, speed: float = 1.0, loop: bool = True):
+    def __init__(self, csv_path: str, speed: float = 1.0, max_laps: int | None = None):
         df = pd.read_csv(csv_path)
         self.pos = df["LapDistPct"].to_numpy()
         self.speed_ms = df["Speed"].to_numpy()
@@ -80,7 +82,7 @@ class ReplaySource(TelemetrySource):
         self.throttle = df["Throttle"].to_numpy().clip(0.0, 1.0)
         self.gear = df["Gear"].to_numpy().astype(int)
         self.rate = speed
-        self.loop = loop
+        self.max_laps = max_laps
         self.n = len(df)
 
     def frames(self):
@@ -111,15 +113,16 @@ class ReplaySource(TelemetrySource):
             emitted += 1
             i += 1
             if i >= self.n:
-                if not self.loop:
-                    return
                 i = 0
                 lap += 1
+                if self.max_laps is not None and lap >= self.max_laps:
+                    return
 
 
 # ---------------------------------------------------------------------------
 # iRacing en vivo — solo Windows
 # ---------------------------------------------------------------------------
+
 
 class IRacingSource(TelemetrySource):
     """Lee la memoria compartida de iRacing via pyirsdk.
@@ -131,7 +134,9 @@ class IRacingSource(TelemetrySource):
     def __init__(self, poll_hz: float = 120.0):
         try:
             import irsdk
-        except Exception as exc:  # ImportError en Mac/Linux, ValueError en algunos casos
+        except (
+            Exception
+        ) as exc:  # ImportError en Mac/Linux, ValueError en algunos casos
             raise SystemExit(
                 "pyirsdk solo funciona en Windows con iRacing instalado.\n"
                 "Para desarrollar en Mac usa --replay con un CSV.\n"
@@ -143,7 +148,9 @@ class IRacingSource(TelemetrySource):
         self.poll_interval = 1.0 / poll_hz
 
         if not self.ir.startup():
-            raise SystemExit("No se encuentra iRacing. Arranca el juego y entra en sesion.")
+            raise SystemExit(
+                "No se encuentra iRacing. Arranca el juego y entra en sesion."
+            )
 
     def session_id(self) -> tuple[str, str]:
         """Devuelve (circuito, coche) para elegir el fichero de referencia."""
@@ -178,7 +185,8 @@ class IRacingSource(TelemetrySource):
                     throttle=float(self.ir["Throttle"] or 0.0),
                     gear=int(self.ir["Gear"] or 0),
                     lap=int(self.ir["Lap"] or 0),
-                    on_track=bool(self.ir["IsOnTrack"]) and not bool(self.ir["OnPitRoad"]),
+                    on_track=bool(self.ir["IsOnTrack"])
+                    and not bool(self.ir["OnPitRoad"]),
                 )
 
             self.ir.unfreeze_var_buffer_latest()
@@ -191,8 +199,13 @@ class IRacingSource(TelemetrySource):
             pass
 
 
-def make_source(replay: str | None, speed: float = 1.0) -> TelemetrySource:
-    """Fabrica: CSV si se pasa --replay, iRacing en vivo si no."""
+def make_source(
+    replay: str | None, speed: float = 1.0, max_laps: int | None = None
+) -> TelemetrySource:
+    """Fabrica: CSV si se pasa --replay, iRacing en vivo si no.
+
+    max_laps solo aplica al replay: en vivo el coach corre hasta que lo pares.
+    """
     if replay:
-        return ReplaySource(replay, speed=speed)
+        return ReplaySource(replay, speed=speed, max_laps=max_laps)
     return IRacingSource()
