@@ -28,7 +28,7 @@ SR = 44100  # frecuencia de muestreo del audio
 # Voz: clips pregenerados (ver gen_voces.py). El coach los concatena en RAM.
 VOCES_DIR = Path(__file__).resolve().parent / "voces"
 VOICE_GAP = 0.30  # segundos de colchon entre el fin de la voz y el primer tick
-CLIP_NAMES = ("frena", "suelta", "p20", "p40", "p60", "p80", "p100",
+CLIP_NAMES = ("frena", "suelta", "mediogas", "p20", "p40", "p60", "p80", "p100",
               "g1", "g2", "g3", "g4", "g5", "g6")
 
 
@@ -153,6 +153,10 @@ class Coach:
             "lift": "SUELTA"
             if console
             else make_tone(cfg.lift_freq, cfg.beep_ms),
+            # Manage = zona de gestion (gas parcial). Tono propio, mas grave.
+            "manage": "MEDIO GAS"
+            if console
+            else make_tone(cfg.manage_freq, cfg.beep_ms),
         }
 
         # --- Voz (opcional): frase de preparacion antes de cada frenada/lift ---
@@ -185,6 +189,11 @@ class Coach:
                 parts.append(clips[f"g{g}"])
         elif ev["type"] == "lift":
             parts = [clips["suelta"]]
+        elif ev["type"] == "manage":
+            parts = [clips["mediogas"]]
+            g = ev.get("gear")
+            if g and 1 <= g <= 6:
+                parts.append(clips[f"g{g}"])
         else:
             return None
         gap = np.zeros(int(SR * 0.04), dtype=np.float32)  # 40 ms entre palabras
@@ -203,6 +212,10 @@ class Coach:
             return "[voz] " + ", ".join(parts)
         if ev["type"] == "lift":
             return "[voz] Suelta"
+        if ev["type"] == "manage":
+            g = ev.get("gear")
+            marcha = f", {g}a" if g and 1 <= g <= 6 else ""
+            return f"[voz] Medio gas{marcha}"
         return None
 
     def gap_to(self, event_pos: float, pos: float) -> float:
@@ -341,6 +354,7 @@ def main():
     ap.add_argument("--brake-freq", type=float, default=620.0)
     ap.add_argument("--throttle-freq", type=float, default=1050.0)
     ap.add_argument("--lift-freq", type=float, default=820.0)
+    ap.add_argument("--manage-freq", type=float, default=720.0)
     ap.add_argument(
         "--voice", action="store_true",
         help="voz de preparacion antes de cada frenada/lift (ademas de los pitidos)",

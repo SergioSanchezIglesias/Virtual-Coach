@@ -110,6 +110,16 @@ guía honesta y "Frena 73%" sería falsa precisión. **La marcha es la de la CUR
 (punto de gas), no la del inicio de frenada**: en una horquilla frenas en 5ª
 pero la tomas en 1ª; decir la de frenada engañaría.
 
+**Cuarto tipo de aviso: zonas de gestión (`manage`).** Curvas rápidas
+encadenadas que se toman a gas PARCIAL, sin frenar y sin volver a pleno (el gas
+oscila, se modula). No hay un instante que avisar, así que se avisa la ENTRADA
+con "Medio gas, [marcha]" + un pitido propio (720 Hz). Se detectan contando los
+cruces del gas sobre su media (≥3 = modulación real, no una salida de curva) y
+se descartan las pegadas a una frenada o lift ya detectados. La marcha es la del
+ápex. Validado: aparece en Winton (curva rápida al 36 %), cero en Hockenheim. Es
+el patrón MÁS delicado: vigilar falsos positivos al estrenar circuitos, se ajusta
+con `--manage-*` (crossings, duración, umbrales).
+
 ## Contexto que importa
 
 La referencia es de **otro piloto más rápido** (1 s). Eso es deliberado pero

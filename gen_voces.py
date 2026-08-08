@@ -25,6 +25,7 @@ OUT = Path(__file__).resolve().parent / "voces"
 CLIPS = {
     "frena": "Frena",
     "suelta": "Suelta",
+    "mediogas": "Medio gas",
     # tramos de freno (%)
     "p20": "veinte", "p40": "cuarenta", "p60": "sesenta",
     "p80": "ochenta", "p100": "cien",

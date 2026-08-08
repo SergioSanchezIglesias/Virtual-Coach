@@ -37,6 +37,16 @@ LIFT_NO_BRAKE = 0.08    # si el freno supera esto, es una frenada, no un lift
 LIFT_MIN_DUR = 0.30     # segundos sostenido (descarta microblips del pie)
 LIFT_RECOVER = 0.10     # cuanto sube el gas desde el valle para marcar el gas
 
+# Zonas de gestion: curvas rapidas encadenadas que se toman a GAS PARCIAL, sin
+# frenar y sin volver a pleno. El gas OSCILA (modulacion continua): no hay un
+# instante unico que avisar, se avisa la ENTRADA. Contar cuantas veces el gas
+# cruza su media distingue esto (oscila) de una salida de curva (sube y ya).
+MANAGE_FULL = 0.85       # el gas nunca llega a pleno en la zona
+MANAGE_NO_BRAKE = 0.08   # sin freno en toda la zona
+MANAGE_MIN_DUR = 0.80    # segundos sostenido
+MANAGE_CROSSINGS = 3     # cruces minimos del gas sobre su media (oscilacion)
+MANAGE_CLEAR = 40.0      # metros: si hay frenada/lift mas cerca, no es zona nueva
+
 
 def load_lap(path: str) -> pd.DataFrame:
     """Carga el CSV y normaliza lo minimo imprescindible."""
@@ -223,6 +233,57 @@ def detect_lifts(df: pd.DataFrame, cfg) -> list[dict]:
     return lifts
 
 
+def detect_manage_zones(df: pd.DataFrame, track_length: float, cfg,
+                        taken_pos: list[float]) -> list[dict]:
+    """Zonas de gestion: gas parcial sostenido, sin frenar, sin llegar a pleno.
+
+    Curvas rapidas encadenadas donde el gas se MODULA (sube y baja) en vez de
+    haber una accion puntual. Se detecta el tramo y se avisa su entrada. El
+    numero de cruces del gas sobre su media separa la modulacion real de una
+    simple salida de curva (donde el gas solo sube). Se descartan las zonas
+    pegadas a una frenada o lift ya detectados.
+    """
+    thr = df["Throttle"].to_numpy()
+    brk = df["Brake"].to_numpy()
+    speed = df["Speed"].to_numpy()
+    pos = df["LapDistPct"].to_numpy()
+    gear = df["Gear"].to_numpy()
+    n = len(df)
+
+    zones = []
+    i = 0
+    while i < n:
+        if brk[i] < cfg.manage_no_brake and thr[i] < cfg.manage_full:
+            start = i
+            j = i
+            bmax = 0.0
+            while j < n and brk[j] < cfg.manage_no_brake and thr[j] < cfg.manage_full:
+                bmax = max(bmax, brk[j])
+                j += 1
+            seg = thr[start:j]
+            dur = (j - start) / SAMPLE_RATE
+            if len(seg):
+                gm = float(seg.mean())
+                cross = int(np.sum(np.diff((seg > gm).astype(int)) != 0))
+                p = float(pos[start])
+                near = any(abs(p - t) * track_length < cfg.manage_clear
+                           for t in taken_pos)
+                if (dur >= cfg.manage_min_dur and bmax < cfg.manage_no_brake
+                        and 0.05 < gm < 0.65 and cross >= cfg.manage_crossings
+                        and not near):
+                    apex = start + int(np.argmin(speed[start:j]))
+                    zones.append({
+                        "pos": p,
+                        "speed_ms": float(speed[start]),
+                        "gear": int(gear[apex]),  # marcha en el punto mas lento
+                        "gas_mean": round(gm, 2),
+                    })
+            i = j
+        else:
+            i += 1
+    return zones
+
+
 def print_table(zones: list[dict], track_length: float) -> None:
     print(f"\n{len(zones)} zonas de frenada detectadas\n")
     print(f"{'#':>2} {'freno':>7} {'m':>6} {'v_ent':>6} {'pico':>5} "
@@ -240,7 +301,8 @@ def print_table(zones: list[dict], track_length: float) -> None:
     print()
 
 
-def to_reference(zones: list[dict], lifts: list[dict], args) -> dict:
+def to_reference(zones: list[dict], lifts: list[dict],
+                 manage: list[dict], args) -> dict:
     """Aplana las zonas a la lista de eventos que consume el coach."""
     events = []
     for z in zones:
@@ -268,6 +330,13 @@ def to_reference(zones: list[dict], lifts: list[dict], args) -> dict:
             "type": "throttle",
             "pos": round(lift["gas_pos"], 6),
             "speed_ms": round(lift["gas_speed_ms"], 2),
+        })
+    for m in manage:
+        events.append({
+            "type": "manage",
+            "pos": round(m["pos"], 6),
+            "speed_ms": round(m["speed_ms"], 2),
+            "gear": m["gear"],
         })
     events.sort(key=lambda e: e["pos"])
 
@@ -304,6 +373,11 @@ def main():
     ap.add_argument("--lift-no-brake", type=float, default=LIFT_NO_BRAKE)
     ap.add_argument("--lift-min-dur", type=float, default=LIFT_MIN_DUR)
     ap.add_argument("--lift-recover", type=float, default=LIFT_RECOVER)
+    ap.add_argument("--manage-full", type=float, default=MANAGE_FULL)
+    ap.add_argument("--manage-no-brake", type=float, default=MANAGE_NO_BRAKE)
+    ap.add_argument("--manage-min-dur", type=float, default=MANAGE_MIN_DUR)
+    ap.add_argument("--manage-crossings", type=int, default=MANAGE_CROSSINGS)
+    ap.add_argument("--manage-clear", type=float, default=MANAGE_CLEAR)
     args = ap.parse_args()
 
     df = load_lap(args.csv)
@@ -327,8 +401,19 @@ def main():
                   f"valle {lift['lift_min_throttle']:.2f})")
         print()
 
+    taken = ([z["brake_pos"] for z in zones]
+             + [z["throttle_pos"] for z in zones]
+             + [lift["lift_pos"] for lift in lifts])
+    manage = detect_manage_zones(df, args.track_length, args, taken)
+    if manage:
+        print(f"{len(manage)} zonas de gestion (gas parcial, sin frenar):")
+        for m in manage:
+            print(f"  {m['pos'] * 100:6.2f}%  {m['speed_ms'] * 3.6:3.0f} km/h  "
+                  f"marcha {m['gear']}  (gas medio {m['gas_mean']:.2f})")
+        print()
+
     if args.output:
-        ref = to_reference(zones, lifts, args)
+        ref = to_reference(zones, lifts, manage, args)
         with open(args.output, "w", encoding="utf-8") as fh:
             json.dump(ref, fh, indent=2)
         print(f"Escrito {args.output} ({len(ref['events'])} eventos)")
