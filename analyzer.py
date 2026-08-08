@@ -57,6 +57,18 @@ def load_lap(path: str) -> pd.DataFrame:
     if missing:
         raise SystemExit(f"Faltan columnas en el CSV: {sorted(missing)}")
 
+    # Rotar para empezar en la LINEA DE META. Garage61 puede exportar la vuelta
+    # arrancando a mitad de circuito (LapDistPct en 0.16, no en 0). Como
+    # detect_events recorre el array asumiendo orden 0->1, un corte a mitad
+    # descoloca las curvas pegadas a el (su gas cae "antes" que su freno, ver
+    # Winton). Rotamos al primer frame tras el salto 1->0. Un CSV que ya empieza
+    # en meta (Hockenheim) no tiene ese salto y se queda igual.
+    pos = df["LapDistPct"].to_numpy()
+    jumps = np.where(np.diff(pos) < -0.5)[0]
+    if len(jumps):
+        k = int(jumps[0]) + 1
+        df = pd.concat([df.iloc[k:], df.iloc[:k]]).reset_index(drop=True)
+
     # El export trae ruido de coma flotante (-3e-10). Fuera.
     df["Brake"] = df["Brake"].clip(0.0, 1.0)
     df["Throttle"] = df["Throttle"].clip(0.0, 1.0)
