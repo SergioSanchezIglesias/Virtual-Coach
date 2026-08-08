@@ -46,6 +46,20 @@ def load_lap(path: str) -> pd.DataFrame:
     return df
 
 
+def track_length_from_speed(df: pd.DataFrame) -> float:
+    """Estima la longitud de la vuelta integrando la velocidad.
+
+    distancia = Σ v·Δt, con Δt = 1/60 s. Da la longitud de la TRAZADA
+    realmente recorrida, que para convertir LapDistPct a metros es incluso
+    mas fiel que la longitud oficial del spline del circuito. No necesita ser
+    exacta al metro: el aviso del coach va en tiempo, con --margin de colchon,
+    asi que un error del 1-2% se traduce en milisegundos. Valido en Hockenheim
+    (4516 m estimados vs 4574 m oficiales: 1.3%). Evita tener que saber y
+    teclear la longitud de cada circuito a mano.
+    """
+    return float(df["Speed"].sum() / SAMPLE_RATE)
+
+
 def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
     """Devuelve zonas de frenada con su punto de freno y su punto de gas."""
     brake = df["Brake"].to_numpy()
@@ -192,8 +206,10 @@ def main():
     ap.add_argument("--track", default="unknown")
     ap.add_argument("--car", default="unknown")
     ap.add_argument("--laptime", type=float, default=None)
-    ap.add_argument("--track-length", type=float, default=4574.0,
-                    help="metros, solo para mostrar distancias legibles")
+    ap.add_argument("--track-length", type=float, default=None,
+                    help="metros; si se omite, se estima integrando la velocidad "
+                         "de la propia vuelta (afecta a la fusion de zonas y al "
+                         "timing del coach, no es solo cosmetico)")
     ap.add_argument("-o", "--output", default=None)
     ap.add_argument("--brake-on", type=float, default=BRAKE_ON)
     ap.add_argument("--brake-off", type=float, default=BRAKE_OFF)
@@ -205,6 +221,11 @@ def main():
 
     df = load_lap(args.csv)
     print(f"{len(df)} muestras, {len(df) / SAMPLE_RATE:.3f} s reconstruidos")
+
+    if args.track_length is None:
+        args.track_length = track_length_from_speed(df)
+        print(f"Longitud estimada de la vuelta: {args.track_length:.0f} m "
+              f"(integrada de la velocidad)")
 
     zones = detect_events(df, args.track_length, args)
     print_table(zones, args.track_length)
