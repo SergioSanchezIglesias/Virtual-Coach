@@ -14,8 +14,9 @@ Trabajamos en español.
 |---|---|---|
 | `analyzer.py` | CSV de Garage61 → JSON de eventos | funcionando y validado; estima la longitud sola |
 | `source.py` | telemetría: replay de CSV o iRacing en vivo | replay validado; `IRacingSource` **validado en pista** |
-| `coach.py` | bucle, anticipación y audio | validado en pista con iRacing |
+| `coach.py` | bucle, anticipación, audio y voz | pitidos validados en pista; **voz sin probar** |
 | `gui.py` | ventana para elegir referencia y lanzar el coach | funciona; **sin probar en Windows** (en Mac no pinta, ver Entorno) |
+| `gen_voces.py` | genera los clips de voz con `say` (macOS), se versionan | funciona |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -92,6 +93,23 @@ pleno, coherente con la regla del gas en las frenadas.
 (un toque de 0.34). Hay hueco limpio: no existen picos reales entre 0.05 y 0.34.
 Si en otro circuito aparecen avisos fantasma, subirlo por CLI.
 
+**La voz (`--voice`) es preparación anticipada; el pitido sigue siendo el
+gatillo.** Secuencia por frenada: VOZ ("Frena, 40%, tercera") → cuenta atrás
+(ticks) → PITIDO en el punto. La voz dice el QUÉ con antelación, el pitido el
+CUÁNDO exacto. Resuelve la latencia de la voz: una frase de ~1.5 s no vale como
+gatillo pero sí como aviso previo. Los lifts dicen "Suelta"; el gas no lleva voz
+(el pitido basta). Solo en frenadas/lifts, nunca al acelerar.
+
+**La voz es clips pregenerados, no TTS en vivo.** `gen_voces.py` los crea con
+`say` en el Mac; se versionan en `voces/` y en Windows solo se reproducen (cero
+dependencia de voz). El coach los concatena en RAM ("frena"+"cuarenta"+"tercera").
+
+**El % de freno se dice REDONDEADO a tramos de 20 %**, no el número exacto: el
+`peak` es del piloto de referencia (1 s más rápido), así que "Frena 40%" es una
+guía honesta y "Frena 73%" sería falsa precisión. **La marcha es la de la CURVA
+(punto de gas), no la del inicio de frenada**: en una horquilla frenas en 5ª
+pero la tomas en 1ª; decir la de frenada engañaría.
+
 ## Contexto que importa
 
 La referencia es de **otro piloto más rápido** (1 s). Eso es deliberado pero
@@ -125,11 +143,12 @@ pronto.
 
 ## Siguiente paso
 
-Estrenar `gui.py` en el PC de Windows: elegir un CSV de referencia, procesarlo
-y darle a Empezar. Primero en "modo prueba" (replay) para confirmar que la
-ventana pinta y suena; luego con iRacing en vivo. Recordar llevarse un CSV al
-PC: los `*.csv` están en `.gitignore`, no viajan en el repo.
+Estrenar la **voz** en Windows (casilla "Voz" en la GUI, o `--voice`): confirmar
+que se oye bien la secuencia voz → ticks → pitido, que las marchas cuadran con lo
+que haces, y ajustar al oído si hace falta (la voz se cambia en `gen_voces.py`).
+La voz suena algo más alta que los pitidos; si molesta, igualar niveles. Recordar
+llevarse un CSV al PC: los `*.csv` están en `.gitignore`, no viajan en el repo.
 
 Después: la Fase C, empaquetar en un `.exe` con PyInstaller (revisar antes el
-punto del subprocess). Y en pista, seguir afinando `--lead` (0.35 s por
-defecto); la cuenta atrás ya quedó en 3 ticks cada 0.5 s.
+punto del subprocess; ahora hay que incluir también la carpeta `voces/`). Y en
+pista, seguir afinando `--lead` (0.35 s por defecto).
