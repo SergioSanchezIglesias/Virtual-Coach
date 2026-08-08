@@ -8,6 +8,17 @@
   "events": [
     {
       "type": "brake",
+      "pos": 0.036874,
+      "speed_ms": 61.78,
+      "peak": 0.34
+    },
+    {
+      "type": "throttle",
+      "pos": 0.059441,
+      "speed_ms": 47.33
+    },
+    {
+      "type": "brake",
       "pos": 0.154073,
       "speed_ms": 63.41,
       "peak": 1.0
@@ -43,6 +54,11 @@
       "type": "lift",
       "pos": 0.646825,
       "speed_ms": 40.86
+    },
+    {
+      "type": "throttle",
+      "pos": 0.65505,
+      "speed_ms": 39.3
     },
     {
       "type": "brake",
@@ -81,6 +97,11 @@
       "type": "lift",
       "pos": 0.923184,
       "speed_ms": 38.79
+    },
+    {
+      "type": "throttle",
+      "pos": 0.933552,
+      "speed_ms": 36.41
     }
   ]
 }

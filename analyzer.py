@@ -21,7 +21,11 @@ SAMPLE_RATE = 60.0  # Hz. iRacing / Garage61 exportan a 60 Hz uniformes.
 # Todos ajustables por CLI: son EL parametro a afinar del proyecto.
 BRAKE_ON = 0.15    # el pedal supera esto -> puede ser una frenada
 BRAKE_OFF = 0.03   # por debajo de esto se considera pedal suelto (histeresis)
-BRAKE_MIN_PEAK = 0.35   # pico minimo para no confundir un roce con una frenada
+BRAKE_MIN_PEAK = 0.30   # pico minimo de freno para contar como frenada. A 0.35
+                        # se perdia la curva 1 de Hockenheim (un toque de 0.34).
+                        # Hay hueco limpio: no hay picos reales entre 0.05 y 0.34,
+                        # asi que 0.30 la captura sin colar roces. Validar en otros
+                        # circuitos: si aparecen avisos fantasma, subirlo por CLI.
 BRAKE_MIN_DUR = 0.20    # segundos minimos por encima de BRAKE_OFF
 THROTTLE_ON = 0.20      # apertura de gas que cuenta como "vuelve a acelerar"
 MERGE_DIST = 40.0       # metros: eventos mas juntos que esto se fusionan
@@ -31,6 +35,7 @@ LIFT_FULL = 0.90        # gas considerado "pleno" del que se levanta
 LIFT_TARGET = 0.70      # tiene que caer al menos hasta aqui para contar
 LIFT_NO_BRAKE = 0.08    # si el freno supera esto, es una frenada, no un lift
 LIFT_MIN_DUR = 0.30     # segundos sostenido (descarta microblips del pie)
+LIFT_RECOVER = 0.10     # cuanto sube el gas desde el valle para marcar el gas
 
 
 def load_lap(path: str) -> pd.DataFrame:
@@ -193,10 +198,20 @@ def detect_lifts(df: pd.DataFrame, cfg) -> list[dict]:
             if (min_thr < cfg.lift_target
                     and max_brk < cfg.lift_no_brake
                     and dur >= cfg.lift_min_dur):
+                # Vuelve-a-gas: tras el valle del gas, el punto donde el pie
+                # EMPIEZA a volver de verdad (recupera lift_recover desde el
+                # minimo). Es el "ya puedes", analogo al primer contacto con el
+                # gas de las frenadas, no el gas pleno.
+                idx_min = start + int(np.argmin(thr[start:j]))
+                back = idx_min
+                while back < j and thr[back] < min_thr + cfg.lift_recover:
+                    back += 1
                 lifts.append({
                     "lift_pos": float(pos[start]),
                     "lift_speed_ms": float(speed[start]),
                     "lift_min_throttle": round(float(min_thr), 2),
+                    "gas_pos": float(pos[back]),
+                    "gas_speed_ms": float(speed[back]),
                 })
             i = j
         else:
@@ -242,6 +257,13 @@ def to_reference(zones: list[dict], lifts: list[dict], args) -> dict:
             "pos": round(lift["lift_pos"], 6),
             "speed_ms": round(lift["lift_speed_ms"], 2),
         })
+        # El "vuelve a pisar" del lift usa el mismo aviso que el gas de una
+        # frenada: es la misma orden, "ya puedes acelerar".
+        events.append({
+            "type": "throttle",
+            "pos": round(lift["gas_pos"], 6),
+            "speed_ms": round(lift["gas_speed_ms"], 2),
+        })
     events.sort(key=lambda e: e["pos"])
 
     return {
@@ -276,6 +298,7 @@ def main():
     ap.add_argument("--lift-target", type=float, default=LIFT_TARGET)
     ap.add_argument("--lift-no-brake", type=float, default=LIFT_NO_BRAKE)
     ap.add_argument("--lift-min-dur", type=float, default=LIFT_MIN_DUR)
+    ap.add_argument("--lift-recover", type=float, default=LIFT_RECOVER)
     args = ap.parse_args()
 
     df = load_lap(args.csv)
@@ -293,9 +316,10 @@ def main():
     if lifts:
         print(f"{len(lifts)} lifts (levantar sin frenar):")
         for lift in lifts:
-            print(f"  {lift['lift_pos'] * 100:6.2f}%  "
-                  f"{lift['lift_speed_ms'] * 3.6:3.0f} km/h  "
-                  f"gas hasta {lift['lift_min_throttle']:.2f}")
+            print(f"  suelta {lift['lift_pos'] * 100:6.2f}%  ->  "
+                  f"gas {lift['gas_pos'] * 100:6.2f}%   "
+                  f"({lift['lift_speed_ms'] * 3.6:3.0f} km/h, "
+                  f"valle {lift['lift_min_throttle']:.2f})")
         print()
 
     if args.output:
