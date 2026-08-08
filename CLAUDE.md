@@ -79,6 +79,19 @@ solo teclea por ti los mismos comandos, así que un fallo en la GUI no puede
 tumbar el coach. Ojo al empaquetar el `.exe`: dentro de un ejecutable no hay un
 `python` suelto al que llamar, habrá que revisar este punto.
 
+**Los lifts (curvas rápidas de solo LEVANTAR el gas, sin frenar) se detectan
+como una caída desde gas pleno (`>0.90` a `<0.70`) sostenida y sin que aparezca
+el freno.** Esa definición los separa por construcción de las frenadas (ahí
+sube el freno) y de las salidas de curva (ahí el gas sube desde cero). Avisan
+en pareja igual que las frenadas: `SUELTA` (tono propio, 820 Hz) + `GAS` cuando
+el pie vuelve. El aviso de vuelta es el primer contacto tras el valle, no el gas
+pleno, coherente con la regla del gas en las frenadas.
+
+**Toda frenada real avisa, por suave que sea; el umbral solo filtra roces.**
+`BRAKE_MIN_PEAK` bajó de 0.35 a 0.30 para no perder la curva 1 de Hockenheim
+(un toque de 0.34). Hay hueco limpio: no existen picos reales entre 0.05 y 0.34.
+Si en otro circuito aparecen avisos fantasma, subirlo por CLI.
+
 ## Contexto que importa
 
 La referencia es de **otro piloto más rápido** (1 s). Eso es deliberado pero
