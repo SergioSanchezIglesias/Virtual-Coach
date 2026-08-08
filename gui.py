@@ -25,7 +25,21 @@ from pathlib import Path
 from tkinter import filedialog, scrolledtext, ttk
 
 HERE = Path(__file__).resolve().parent
-PYTHON = sys.executable  # el interprete del venv, no un 'python' cualquiera del PATH
+
+# Windows: evita que cada subproceso abra una ventana de consola negra.
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+
+
+def _tool_cmd(tool: str) -> list[str]:
+    """Comando base para invocar analyzer/coach, empaquetado o en desarrollo.
+
+    Empaquetado (PyInstaller): el propio ejecutable se llama a si mismo con el
+    nombre de la herramienta ("VirtualCoach.exe coach ..."). En desarrollo:
+    "python app.py coach ...". Asi no hace falta un python ni los .py sueltos.
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable, tool]
+    return [sys.executable, str(HERE / "app.py"), tool]
 
 # Parametros de aviso por defecto, afinados al oido en pista.
 COUNTDOWN = "3"
@@ -116,13 +130,11 @@ class CoachGUI:
         out = csv.with_name(f"ref_{track}.json")
 
         self.log(f"\nProcesando {csv.name}…")
-        cmd = [
-            PYTHON, str(HERE / "analyzer.py"), str(csv),
-            "--track", track, "-o", str(out),
-        ]
+        cmd = _tool_cmd("analyzer") + [str(csv), "--track", track, "-o", str(out)]
         # Sincrono a proposito: analyzer tarda <1 s y necesitamos su resultado
         # antes de dejar rodar. El parpadeo de la ventana es imperceptible.
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                creationflags=CREATE_NO_WINDOW)
         self.log(result.stdout.strip())
         if result.returncode != 0 or not out.exists():
             self.log(f"[!] No se pudo procesar: {result.stderr.strip()}")
@@ -140,8 +152,8 @@ class CoachGUI:
         if self.reference is None or self.coach_proc is not None:
             return
 
-        cmd = [
-            PYTHON, str(HERE / "coach.py"), str(self.reference),
+        cmd = _tool_cmd("coach") + [
+            str(self.reference),
             "--countdown", COUNTDOWN, "--countdown-interval", COUNTDOWN_INTERVAL,
         ]
         if self.replay_var.get() and self.csv is not None:
@@ -154,7 +166,7 @@ class CoachGUI:
 
         self.coach_proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1,
+            text=True, bufsize=1, creationflags=CREATE_NO_WINDOW,
         )
         # Su salida se lee en un hilo y se vuelca al registro con root.after,
         # que es la unica forma segura de tocar widgets desde otro hilo en Tk.

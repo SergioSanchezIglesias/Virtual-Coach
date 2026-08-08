@@ -26,7 +26,14 @@ from source import make_source
 SR = 44100  # frecuencia de muestreo del audio
 
 # Voz: clips pregenerados (ver gen_voces.py). El coach los concatena en RAM.
-VOCES_DIR = Path(__file__).resolve().parent / "voces"
+def _base_dir() -> Path:
+    """Carpeta de datos: el dir del script, o el bundle de PyInstaller."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)  # PyInstaller extrae los datos aqui
+    return Path(__file__).resolve().parent
+
+
+VOCES_DIR = _base_dir() / "voces"
 VOICE_GAP = 0.30  # segundos de colchon entre el fin de la voz y el primer tick
 CLIP_NAMES = ("frena", "suelta", "mediogas", "p20", "p40", "p60", "p80", "p100",
               "g1", "g2", "g3", "g4", "g5", "g6")

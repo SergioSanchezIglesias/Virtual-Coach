@@ -10,3 +10,6 @@ sounddevice   # audio de baja latencia, funciona en macOS y Windows
 # se reproducen sin esto. Requiere internet: voces neuronales de Microsoft.
 # edge-tts
 # miniaudio
+
+# Solo para CONSTRUIR el .exe en Windows (pyinstaller VirtualCoach.spec).
+# pyinstaller

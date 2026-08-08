@@ -4,6 +4,10 @@ source/
 __pycache__/
 *.pyc
 
+# PyInstaller: artefactos del build del .exe (el .spec SI se versiona)
+build/
+dist/
+
 # macOS
 .DS_Store
 
