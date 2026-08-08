@@ -5,3 +5,8 @@ sounddevice   # audio de baja latencia, funciona en macOS y Windows
 
 # Solo en el PC de juego (Windows). En Mac ni se instala ni hace falta.
 # pyirsdk
+
+# Solo para REGENERAR los clips de voz (gen_voces.py). Los WAV ya versionados
+# se reproducen sin esto. Requiere internet: voces neuronales de Microsoft.
+# edge-tts
+# miniaudio
