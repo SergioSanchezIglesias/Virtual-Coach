@@ -67,6 +67,11 @@ el punto de frenada ajeno no le aplica. Existe `--skip-mismatch` para callarlo.
 tonos pregenerados en RAM. Nada de abrir streams ni cargar ficheros por aviso.
 Los tonos llevan envolvente de 6 ms para no hacer click.
 
+**El motor de audio es un MEZCLADOR**: suma los sonidos activos en vez de que
+cada uno corte al anterior. Así la voz de preparación y el pitido del punto
+suenan a la vez, y el aviso de una curva no pisa el de la siguiente (crítico
+donde las curvas van juntas, como Winton). El mix se clipa a [-1, 1].
+
 **La longitud del circuito se estima integrando la velocidad**, no se teclea:
 `track_length ≈ Σ Speed / 60`. Validado en Hockenheim (4516 vs 4574 m
 oficiales, 1.3 %). Como el aviso va en tiempo con `--margin` de colchón, ese
@@ -101,8 +106,11 @@ gatillo pero sí como aviso previo. Los lifts dicen "Suelta"; el gas no lleva vo
 (el pitido basta). Solo en frenadas/lifts, nunca al acelerar.
 
 **La voz es clips pregenerados, no TTS en vivo.** `gen_voces.py` los crea con
-`say` en el Mac; se versionan en `voces/` y en Windows solo se reproducen (cero
-dependencia de voz). El coach los concatena en RAM ("frena"+"cuarenta"+"tercera").
+**voces neuronales de Microsoft** (edge-tts, es-ES-AlvaroNeural — casi humana),
+decodificadas a WAV con miniaudio (sin ffmpeg) y con el silencio de relleno
+recortado. Se versionan en `voces/` y en Windows solo se reproducen: cero
+dependencia de voz e internet en runtime (edge-tts solo hace falta para
+REGENERAR). El coach los concatena en RAM ("frena"+"cuarenta"+"tercera").
 
 **El % de freno se dice REDONDEADO a tramos de 20 %**, no el número exacto: el
 `peak` es del piloto de referencia (1 s más rápido), así que "Frena 40%" es una
