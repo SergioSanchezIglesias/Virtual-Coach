@@ -80,6 +80,17 @@ el punto de frenada ajeno no le aplica. Existe `--skip-mismatch` para callarlo.
 tonos pregenerados en RAM. Nada de abrir streams ni cargar ficheros por aviso.
 Los tonos llevan envolvente de 6 ms para no hacer click.
 
+**El retraso de la tarjeta se DESCUENTA de la antelación** (`--audio-latency`,
+por defecto el que declara el sistema). Encontrado en el log de una sesión real:
+el PC de juego declara **182.9 ms** de latencia de salida, y ese número se venía
+midiendo e imprimiendo desde el primer día **sin usarse para nada**. Con
+`--lead 0.35`, la antelación real era 0.167 s — **la mitad**; a 220 km/h, 10 m
+en vez de 21. En el Mac no se veía porque ahí son unos pocos milisegundos.
+Se suma al `lead` para que el pitido **llegue** cuando toca, no para que salga
+cuando toca. Los golden no se movieron: `ConsoleEngine` declara latencia 0.
+Sospecha razonable: parte del afinado "al oído" de `--countdown-interval` estaba
+compensando esto a mano.
+
 **El volumen de la voz es un ajuste PERCEPTUAL, no matemático** (`--voice-volume`,
 por defecto 0.60). La voz se oía más alta que los pitidos, pero **no es que los
 clips vengan saturados**: medidos, sus picos van de 0.295 a 0.561, comparables al
@@ -188,6 +199,22 @@ nuevo, ni un hueco que buscar. Y se dice **"suave"**, no *"aquí te pasaste"*:
 un aviso que mira al pasado te mete duda tres segundos antes de frenar, y **la
 duda cuesta más tiempo que el error que intenta corregir**. Solo se corrige UNA
 curva por vuelta, la peor: corregir siete a la vez es ruido y acabas apagándolo.
+
+**Tres correcciones de la primera sesión real** (feedback de pista, no de mesa):
+
+1. **Habla de NÚMERO de frenada, no de porcentaje.** *"Frenada @ 58.6%"* no
+   significa nada al volante; *"Frenada 4"* sí, y es la misma numeración que ya
+   imprime el analyzer al procesar la vuelta. Ojo: es la cuarta ZONA DE FRENADA
+   contando desde meta, no la "curva 4" del plano oficial.
+2. **Las zonas por las que no se pasó rodando se descartan** (`NOT_A_LAP_DROP`,
+   30 %). En la sesión salió esto: `Frenada @ 3.6% ABS 0.00s (el 0.80s)
+   -162.5 km/h -> te sobra margen`. **162 km/h más lento** no es un error de
+   pilotaje: estaba saliendo de boxes a 61 por hora. Out-lap, entrada a boxes,
+   bandera o incidente → no hay nada que diagnosticar, y aconsejar ahí es peor
+   que callarse.
+3. **Como mucho las 2 peores, ordenadas** (`--review-top`). Salieron CUATRO
+   consejos y los cuatro decían lo mismo. Cuando todo dice lo mismo no informas,
+   haces ruido.
 
 **Si la vuelta fue limpia, el coach no dice nada.** El silencio es información.
 Validado: pasar la referencia contra sí misma da 7/7 y 9/9 frenadas "ok" y cero

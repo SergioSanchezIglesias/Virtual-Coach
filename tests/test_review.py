@@ -237,6 +237,88 @@ def test_detecta_que_te_sobra_margen():
     assert peor.cue == "aprieta"
 
 
+# ---------------------------------------------------------------------------
+# Lo que fallo en la primera sesion real
+# ---------------------------------------------------------------------------
+
+
+def test_el_diagnostico_dice_el_NUMERO_de_frenada():
+    """"Frenada @ 58.6%" no significa nada al volante.
+
+    Al procesar la vuelta ya se numeran las siete frenadas; el resumen tiene
+    que hablar el mismo idioma. Un porcentaje no lo puedes reconocer mientras
+    conduces.
+    """
+    review = LapReview([zona(pos=0.20), zona(pos=0.60), zona(pos=0.85)])
+    assert [z["index"] for z in review.zones] == [1, 2, 3]
+
+    d = diagnose(review.zones[1], abs_s=2.9, min_speed_ms=20.0)
+    assert d.index == 2
+    assert "Frenada 2" in d.describe()
+
+
+def test_una_zona_pasada_a_paso_de_boxes_no_se_analiza():
+    """LO QUE APARECIO EN LA PRIMERA SESION REAL, y era absurdo:
+
+        Frenada @ 3.6%   ABS 0.00s (el 0.80s)   -162.5 km/h
+           -> te sobra margen: puedes frenar mas tarde o mas fuerte
+
+    Ciento sesenta y dos km/h mas lento no es un error de pilotaje: es que
+    estaba saliendo de boxes a 61 por hora. Una diferencia asi significa que
+    esa curva no la hiciste rodando, y no hay nada que diagnosticar.
+    """
+    d = diagnose(zona(min_speed_ms=47.4), abs_s=0.0, min_speed_ms=2.3)
+    assert d.verdict == "skip"
+    assert d.cue is None
+
+
+def test_una_diferencia_normal_si_se_analiza():
+    """El filtro no puede cargarse los errores de verdad, que son pequenos."""
+    d = diagnose(zona(abs_s=1.50, min_speed_ms=25.0), abs_s=0.2, min_speed_ms=22.5)
+    assert d.verdict == "short"
+
+
+def test_las_zonas_descartadas_no_llegan_al_resumen():
+    eventos = [zona(pos=0.20, min_speed_ms=40.0), zona(pos=0.60, min_speed_ms=25.0)]
+    review = LapReview(eventos)
+
+    for i in range(100):
+        p = i / 100
+        # Por la primera zona se pasa a paso de tortuga (saliendo de boxes).
+        v = 3.0 if 0.20 <= p < 0.25 else 22.0
+        review.on_frame(frame(p, speed=v, brake=0.9))
+
+    for d in review.finish():
+        assert d.verdict != "skip", "una zona sin sentido llego al resumen"
+
+
+def test_el_resumen_no_suelta_una_lista_interminable():
+    """En la sesion real salieron CUATRO consejos y los cuatro iguales.
+
+    Cuando todo dice lo mismo no informas, haces ruido. Se dan los peores y
+    ya, ordenados de mas a menos grave.
+    """
+    from review import top
+
+    muchos = [
+        diagnose(zona(pos=0.1 * i, min_speed_ms=25.0), abs_s=0.1,
+                 min_speed_ms=25.0 - i)
+        for i in range(1, 6)
+    ]
+    peores = top(muchos, limit=2)
+
+    assert len(peores) == 2
+    assert peores[0].delta_kmh < peores[1].delta_kmh, "no estan ordenados"
+    assert peores[0].delta_kmh == min(d.delta_kmh for d in muchos)
+
+
+def test_si_no_hay_nada_grave_el_resumen_va_vacio():
+    from review import top
+
+    limpios = [diagnose(zona(pos=0.2), abs_s=1.55, min_speed_ms=25.0)]
+    assert top(limpios) == []
+
+
 def test_si_la_vuelta_esta_limpia_no_hay_nada_que_cantar():
     limpios = [diagnose(zona(pos=0.2), abs_s=1.55, min_speed_ms=25.0),
                diagnose(zona(pos=0.7), abs_s=1.45, min_speed_ms=25.1)]

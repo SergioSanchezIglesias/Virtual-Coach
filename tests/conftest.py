@@ -85,6 +85,7 @@ def coach_cfg(**overrides) -> SimpleNamespace:
     cfg = SimpleNamespace(
         lead=0.35,
         margin=0.0,
+        audio_latency=None,
         speed_tol=0.10,
         skip_mismatch=False,
         countdown=3,
@@ -97,6 +98,7 @@ def coach_cfg(**overrides) -> SimpleNamespace:
         lift_freq=820.0,
         manage_freq=720.0,
         voice=False,
+        review_top=2,
         voice_volume=0.60,
         beep_ms=90,
         verbose=False,

@@ -45,13 +45,26 @@ ABS_LESS_RATIO = 0.6
 # debajo de esto es la variacion normal entre vueltas, no un error.
 SLOWER_MS = 1.0
 
+# Y por arriba: si pasas MUCHISIMO mas lento, no es un error de pilotaje.
+# En la primera sesion real salio esto:
+#
+#     Frenada @ 3.6%   ABS 0.00s (el 0.80s)   -162.5 km/h
+#        -> te sobra margen: puedes frenar mas tarde o mas fuerte
+#
+# Ciento sesenta y dos km/h de diferencia: estaba saliendo de boxes a 61 por
+# hora. Una desviacion asi solo significa que por esa curva no se paso rodando
+# (out-lap, entrada a boxes, bandera, incidente), y ahi no hay nada que
+# diagnosticar. Aconsejar sobre eso es peor que callarse.
+NOT_A_LAP_DROP = 0.30
+
 
 @dataclass(frozen=True)
 class Diagnosis:
     """El veredicto de una frenada, con los numeros que lo justifican."""
 
     pos: float
-    verdict: str  # ok | passed | short | limit
+    index: int  # numero de frenada de la vuelta, contando desde meta
+    verdict: str  # ok | passed | short | limit | skip
     cue: str | None  # la palabra que se le dice al piloto, o nada
     abs_s: float
     ref_abs_s: float
@@ -64,8 +77,12 @@ class Diagnosis:
         return (self.min_speed_ms - self.ref_min_speed_ms) * 3.6
 
     def describe(self) -> str:
-        """Una linea de texto para el resumen escrito."""
-        cuerpo = (f"Frenada @{self.pos * 100:5.1f}%   "
+        """Una linea de texto para el resumen escrito.
+
+        Habla de NUMERO de frenada, no de porcentaje de vuelta: "Frenada 4" lo
+        reconoces al volante, "Frenada @ 58.6%" no significa nada.
+        """
+        cuerpo = (f"Frenada {self.index} (@{self.pos * 100:.0f}%)   "
                   f"ABS {self.abs_s:4.2f}s (el {self.ref_abs_s:4.2f}s)   "
                   f"{self.delta_kmh:+5.1f} km/h")
         explicacion = {
@@ -73,6 +90,7 @@ class Diagnosis:
             "short": "te sobra margen: puedes frenar mas tarde o mas fuerte",
             "limit": "vas al limite, mismo resultado castigando mas la goma",
             "ok": "bien",
+            "skip": "no se analiza: por ahi no pasaste rodando",
         }[self.verdict]
         return f"{cuerpo}\n     -> {explicacion}"
 
@@ -87,7 +105,10 @@ def diagnose(event: dict, abs_s: float, min_speed_ms: float) -> Diagnosis:
     menos_abs = abs_s < ref_abs * ABS_LESS_RATIO
     mas_lento = min_speed_ms < ref_min - SLOWER_MS
 
-    if mas_abs and mas_lento:
+    if min_speed_ms < ref_min * NOT_A_LAP_DROP:
+        # Por aqui no pasaste rodando: out-lap, boxes, bandera, incidente.
+        verdict, cue = "skip", None
+    elif mas_abs and mas_lento:
         verdict, cue = "passed", "suave"
     elif menos_abs and mas_lento:
         verdict, cue = "short", "aprieta"
@@ -100,6 +121,7 @@ def diagnose(event: dict, abs_s: float, min_speed_ms: float) -> Diagnosis:
 
     return Diagnosis(
         pos=event["pos"],
+        index=int(event.get("index", 0)),
         verdict=verdict,
         cue=cue,
         abs_s=round(abs_s, 2),
@@ -115,10 +137,18 @@ def worst(diagnoses) -> Diagnosis | None:
     Solo se canta UNA cosa por vuelta. Corregir siete curvas a la vez no es
     entrenar, es ruido, y acabas apagando el coach.
     """
+    corregibles = top(diagnoses, limit=1)
+    return corregibles[0] if corregibles else None
+
+
+def top(diagnoses, limit: int = 2) -> list[Diagnosis]:
+    """Las peores frenadas de la vuelta, de mas a menos grave.
+
+    En la primera sesion real el resumen soltaba CUATRO consejos y los cuatro
+    decian lo mismo. Cuando todo dice lo mismo no informas, haces ruido.
+    """
     corregibles = [d for d in diagnoses if d.cue]
-    if not corregibles:
-        return None
-    return min(corregibles, key=lambda d: d.delta_kmh)
+    return sorted(corregibles, key=lambda d: d.delta_kmh)[:limit]
 
 
 class LapReview:
@@ -134,7 +164,13 @@ class LapReview:
         # vigila, en fraccion de vuelta. 0.04 son unos 180 m en un circuito de
         # 4.5 km: de sobra para cubrir frenada mas curva, sin invadir la
         # siguiente zona.
-        self.zones = [e for e in events if e["type"] == "brake"]
+        # Se numeran por orden desde meta: es como las cuenta el analyzer al
+        # procesar la vuelta, y es el unico identificador que el piloto puede
+        # reconocer sentado en el coche.
+        self.zones = []
+        for i, ev in enumerate(sorted((e for e in events if e["type"] == "brake"),
+                                      key=lambda e: e["pos"]), start=1):
+            self.zones.append({**ev, "index": i})
         self.window = window
         self._reset()
 
@@ -165,10 +201,14 @@ class LapReview:
         for i, ev in enumerate(self.zones):
             if self._min_speed[i] is None:
                 continue
-            salida.append(diagnose(
+            d = diagnose(
                 ev,
                 abs_s=self._abs_frames[i] / SAMPLE_RATE,
                 min_speed_ms=self._min_speed[i],
-            ))
+            )
+            # Las zonas por las que no se paso rodando se tiran aqui: no
+            # ensucian el resumen ni pueden acabar siendo la "peor curva".
+            if d.verdict != "skip":
+                salida.append(d)
         self._reset()
         return salida
