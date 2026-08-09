@@ -35,6 +35,12 @@ CLIPS = {
     "p80": "ochenta", "p100": "cien",
     "g1": "primera", "g2": "segunda", "g3": "tercera",
     "g4": "cuarta", "g5": "quinta", "g6": "sexta",
+    # Modo entrenamiento: la correccion de la vuelta anterior. Son ORDENES,
+    # no reproches. "Suave" se puede obedecer sin pensar; "aqui te pasaste"
+    # solo te mete duda tres segundos antes de frenar, y la duda cuesta mas
+    # tiempo que el error que intenta corregir.
+    "suave": "suave",
+    "aprieta": "aprieta",
 }
 
 
@@ -55,9 +61,15 @@ def trim_silence(samples: np.ndarray, thresh: int = 200,
 
 def synth(text: str, wav_path: Path) -> None:
     """Sintetiza `text` a un WAV mono 16-bit 44100 con voz neuronal."""
+    import sys
+
     mp3 = wav_path.with_suffix(".mp3")
+    # Se invoca como modulo del MISMO Python que corre este script. Llamar al
+    # comando "edge-tts" a secas falla si el venv no esta activado: el binario
+    # vive dentro de .venv/bin y no esta en el PATH.
     subprocess.run(
-        ["edge-tts", "--voice", VOZ, "--text", text, "--write-media", str(mp3)],
+        [sys.executable, "-m", "edge_tts", "--voice", VOZ, "--text", text,
+         "--write-media", str(mp3)],
         check=True, capture_output=True,
     )
     dec = miniaudio.decode_file(str(mp3), nchannels=1, sample_rate=SR)
@@ -71,10 +83,25 @@ def synth(text: str, wav_path: Path) -> None:
 
 
 def main() -> None:
+    import sys
+
+    # Por defecto solo se generan los que faltan. Los clips existentes estan
+    # versionados y validados al oido: regenerarlos por accidente al anadir una
+    # palabra nueva cambiaria sin querer lo que ya suena bien.
+    forzar = "--force" in sys.argv
+
     OUT.mkdir(exist_ok=True)
+    nuevos = 0
     for name, text in CLIPS.items():
-        synth(text, OUT / f"{name}.wav")
+        destino = OUT / f"{name}.wav"
+        if destino.exists() and not forzar:
+            continue
+        synth(text, destino)
+        nuevos += 1
         print(f"  {name:10} <- \"{text}\"")
+
+    if not nuevos:
+        print("Nada que generar: estan todos. Usa --force para rehacerlos.")
     print(f"\n{len(CLIPS)} clips ({VOZ}) en {OUT}/")
 
 

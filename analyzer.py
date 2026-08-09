@@ -100,6 +100,12 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
     speed = df["Speed"].to_numpy()
     pos = df["LapDistPct"].to_numpy()
     gear = df["Gear"].to_numpy()
+    # El ABS marca donde el piloto pidio MAS freno del que la goma podia dar.
+    # Puede faltar en un CSV viejo: si no esta, se trata como "nunca".
+    if "ABSActive" in df.columns:
+        abs_active = df["ABSActive"].to_numpy().astype(bool)
+    else:
+        abs_active = np.zeros(len(df), dtype=bool)
     n = len(df)
 
     zones = []
@@ -149,6 +155,15 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
 
             zones.append({
                 "coasting": bool(coasting),
+                # Segundos que el ABS estuvo trabajando en esta frenada.
+                #
+                # OJO con la lectura: NO sirve como si/no. Medido sobre las dos
+                # referencias, el piloto rapido activa el ABS en TODAS sus
+                # frenadas (7 de 7 en Hockenheim, 9 de 9 en Winton): frena al
+                # limite y deja que el sistema module. Lo que distingue una
+                # frenada de otra es CUANTO rato, que ademas escala con la
+                # intensidad (0.05 s en un roce, 2.33 s en la mas al limite).
+                "abs_s": round(float(abs_active[start:gas].sum()) / SAMPLE_RATE, 3),
                 "full_throttle_pos": float(pos[full]),
                 "brake_pos": float(pos[start]),
                 "brake_speed_ms": float(speed[start]),
@@ -184,6 +199,7 @@ def merge_close(zones: list[dict], track_length: float, min_gap: float) -> list[
             prev = merged[-1]
             prev["peak_brake"] = max(prev["peak_brake"], z["peak_brake"])
             prev["min_speed_ms"] = min(prev["min_speed_ms"], z["min_speed_ms"])
+            prev["abs_s"] = round(prev["abs_s"] + z["abs_s"], 3)
             prev["throttle_pos"] = z["throttle_pos"]
             prev["throttle_speed_ms"] = z["throttle_speed_ms"]
             prev["gear"] = z["gear"]  # la marcha de la curva es la del apoyo final
@@ -324,6 +340,13 @@ def to_reference(zones: list[dict], lifts: list[dict],
             "speed_ms": round(z["brake_speed_ms"], 2),
             "peak": round(z["peak_brake"], 2),
             "gear": z["gear"],  # marcha de la curva, para la voz
+            # Los dos datos del analisis post-vuelta: cuanto trabajo el ABS de
+            # la referencia en esta frenada, y a que velocidad paso por el
+            # punto mas lento. Comparando los tuyos con estos se distingue
+            # "te pasaste de frenada" de "te sobra margen", que dan el mismo
+            # sintoma (vas lento) y se corrigen al reves.
+            "abs_s": z["abs_s"],
+            "min_speed_ms": round(z["min_speed_ms"], 2),
         })
         events.append({
             "type": "throttle",

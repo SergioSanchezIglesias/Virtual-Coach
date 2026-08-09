@@ -16,6 +16,7 @@ Trabajamos en español.
 | `source.py` | telemetría: replay de CSV o iRacing en vivo | replay validado; `IRacingSource` **validado en pista** |
 | `coach.py` | bucle, anticipación, audio y voz | validado en pista (Hockenheim y Winton) |
 | `gui.py` | ventana para elegir referencia y lanzar el coach | validada en Windows |
+| `review.py` | análisis post-vuelta con el ABS: por qué has ido lento | rama `feat/analisis-abs`, sin estrenar en pista |
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
@@ -157,6 +158,45 @@ se descartan las pegadas a una frenada o lift ya detectados. La marcha es la del
 el patrón MÁS delicado: vigilar falsos positivos al estrenar circuitos, se ajusta
 con `--manage-*` (crossings, duración, umbrales).
 
+**El ABS no vale como sí/no: TODO EL MUNDO lo activa. Vale el CUÁNTO.**
+(`review.py`, rama `feat/analisis-abs`.) La premisa de partida era *"si el
+rápido no activa el ABS y tú sí, te pasaste"*. **Medido: es falsa.** El piloto
+de referencia lo activa en las **7 frenadas de Hockenheim y en las 9 de
+Winton** — frena al límite y deja que el sistema module, que es lo que hace un
+piloto rápido. Lo que sí discrimina es la DURACIÓN, que además escala con la
+intensidad: de 0.05 s en un roce a 2.33 s en la frenada más al límite. Lo vigila
+`test_el_piloto_de_referencia_usa_el_abs_en_todas_las_frenadas`.
+
+**El diagnóstico cruza el ABS con la velocidad de paso**, porque son dos errores
+que dan el MISMO síntoma (ir lento) y se corrigen al revés:
+
+| ABS vs referencia | Paso por curva | Veredicto | Se dice |
+|---|---|---|---|
+| mucho más | más lento | te pasaste de frenada | "suave" |
+| bastante menos | más lento | te sobra margen | "aprieta" |
+| más | igual | vas al límite, castiga goma | nada |
+| parecido | igual o mejor | bien | nada |
+
+Hace falta salto **relativo Y absoluto** (`ABS_MORE_RATIO` + `ABS_MORE_ABS_S`).
+Sin el absoluto, la frenada 5 de Hockenheim (0.05 s de ABS) convierte cualquier
+roce en "siete veces más" y el coach cantaría un error por vuelta.
+
+**La corrección va DENTRO de la frase que ya existe, y es una ORDEN, no un
+reproche.** `--training` (casilla en la GUI, colgada de la de voz) convierte
+*"Frena, 40%, tercera"* en *"Frena, 40%, tercera, **suave**"*. Ni un sonido
+nuevo, ni un hueco que buscar. Y se dice **"suave"**, no *"aquí te pasaste"*:
+un aviso que mira al pasado te mete duda tres segundos antes de frenar, y **la
+duda cuesta más tiempo que el error que intenta corregir**. Solo se corrige UNA
+curva por vuelta, la peor: corregir siete a la vez es ruido y acabas apagándolo.
+
+**Si la vuelta fue limpia, el coach no dice nada.** El silencio es información.
+Validado: pasar la referencia contra sí misma da 7/7 y 9/9 frenadas "ok" y cero
+correcciones. Es la garantía contra el coach cansino.
+
+**Nada del análisis suena EN VIVO.** Un "¡ABS!" mientras frenas es la peor
+distracción posible y además llega tarde: cuando lo oyes, ya te has pasado. El
+diagnóstico se cierra al cruzar meta, que es cuando el dato sigue fresco.
+
 **Los tests congelan lo que ganó la carrera, y por eso van SIEMPRE primero.**
 Antes de tocar nada del core se fotografía el comportamiento actual (`golden`) y
 solo entonces se cambia. Si se escriben después, se congela el comportamiento
@@ -179,7 +219,8 @@ pronto.
 - `LapDistPct` nativo 0-1 — el mismo canal que da el SDK en vivo, sin conversión
 - `Speed` en m/s, `Brake` y `Throttle` en 0-1 (con ruido de coma flotante
   negativo, hay que hacer clip)
-- `ABSActive` viene poblado y todavía no se usa: marca dónde está al límite
+- `ABSActive` viene poblado y **ya se usa** (`review.py`): marca dónde el piloto
+  pidió más freno del que la goma daba. Ver la decisión sobre el ABS arriba
 - `LapDistPct × longitud` es aproximado (spline del circuito vs trazada real);
   no fiarse de los metros al centímetro
 

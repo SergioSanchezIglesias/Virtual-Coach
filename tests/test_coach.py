@@ -253,6 +253,100 @@ def test_gap_to_resuelve_el_paso_por_meta(evento, piloto, esperado):
     assert coach.gap_to(evento, piloto) == pytest.approx(esperado * 1000.0)
 
 
+# ---------------------------------------------------------------------------
+# Analisis post-vuelta y modo entrenamiento
+# ---------------------------------------------------------------------------
+
+
+def test_el_analisis_no_cambia_ni_un_aviso(circuito):
+    """Lo primero, como siempre: mirar no puede alterar lo que suena."""
+    con = rodar(circuito, vueltas=2)
+    golden(f"{circuito}_coach", rodar(circuito))
+    assert con, "no sono nada"
+
+
+def test_al_cruzar_meta_hay_diagnostico_de_la_vuelta(circuito):
+    """El resumen se cierra en meta, que es cuando el dato aun esta fresco."""
+    engine = GrabadorEngine()
+    coach = Coach(referencia(circuito), engine, coach_cfg())
+
+    anterior = None
+    for f in ReplaySource(str(CSV[circuito]), speed=0.0, max_laps=2).frames():
+        anterior = f.lap_pos
+        engine.frame = f
+        coach.on_frame(f)
+
+    assert coach.last_review, "no genero ningun diagnostico al cruzar meta"
+    assert all(d.verdict in ("ok", "passed", "short", "limit")
+               for d in coach.last_review)
+
+
+def test_rodando_la_propia_referencia_no_se_corrige_nada(circuito):
+    """Si le das la vuelta que le sirve de referencia, no hay nada que decir.
+
+    Es la garantia contra el coach cansino: solo habla cuando hay algo de
+    verdad que corregir.
+    """
+    engine = GrabadorEngine()
+    coach = Coach(referencia(circuito), engine, coach_cfg(training=True))
+
+    for f in ReplaySource(str(CSV[circuito]), speed=0.0, max_laps=2).frames():
+        engine.frame = f
+        coach.on_frame(f)
+
+    assert coach.training_cue is None, (
+        f"se invento una correccion: {coach.training_cue}"
+    )
+
+
+def test_en_modo_entrenamiento_la_correccion_va_DENTRO_de_la_frase():
+    """La decision de diseño: ni una frase nueva, ni un sonido nuevo.
+
+    La voz ya dice "Frena, 40%, tercera". En entrenamiento dice "Frena, 40%,
+    tercera, suave". Llega en el mismo momento, no busca hueco, y sobre todo
+    es una ORDEN ("suave") en vez de un reproche ("aqui te pasaste"): un aviso
+    que mira al pasado te mete duda justo antes de frenar, y la duda cuesta
+    mas tiempo que el error.
+    """
+    ref = referencia("hockenheim")
+    frenada = next(e for e in ref["events"] if e["type"] == "brake")
+
+    engine = GrabadorEngine()
+    coach = Coach(ref, engine, coach_cfg(voice=True, training=True))
+    coach.set_training_cue(frenada["pos"], "suave")
+
+    texto = next(ev["_voice"] for ev in coach.events
+                 if ev["pos"] == frenada["pos"])
+    assert texto.endswith("suave"), f"la correccion no entro en la frase: {texto}"
+    assert texto.count("[voz]") == 1, "se genero una frase aparte"
+
+
+def test_sin_modo_entrenamiento_la_frase_es_la_de_siempre():
+    ref = referencia("hockenheim")
+    frenada = next(e for e in ref["events"] if e["type"] == "brake")
+
+    coach = Coach(ref, GrabadorEngine(), coach_cfg(voice=True, training=False))
+    coach.set_training_cue(frenada["pos"], "suave")
+
+    texto = next(ev["_voice"] for ev in coach.events
+                 if ev["pos"] == frenada["pos"])
+    assert not texto.endswith("suave"), "hablo de mas con el modo apagado"
+
+
+def test_la_correccion_solo_va_en_una_curva():
+    """Corregir siete curvas a la vez no es entrenar, es ruido."""
+    ref = referencia("hockenheim")
+    frenadas = [e for e in ref["events"] if e["type"] == "brake"]
+
+    coach = Coach(ref, GrabadorEngine(), coach_cfg(voice=True, training=True))
+    coach.set_training_cue(frenadas[2]["pos"], "aprieta")
+
+    con_correccion = [ev for ev in coach.events
+                      if isinstance(ev.get("_voice"), str)
+                      and ev["_voice"].endswith("aprieta")]
+    assert len(con_correccion) == 1
+
+
 @pytest.mark.parametrize("pico,clip", [
     (0.10, "p20"),   # nunca por debajo de p20: "frena 0%" no existe
     (0.34, "p40"),

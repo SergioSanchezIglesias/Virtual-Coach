@@ -217,6 +217,87 @@ def test_la_marcha_es_la_de_la_curva_no_la_de_la_frenada(analyzer_cfg):
     assert reduce_de_verdad, "ninguna zona reduce de marcha: dato sospechoso"
 
 
+def test_la_referencia_guarda_cuanto_trabajo_el_abs(circuito, analyzer_cfg):
+    """El ABS es el testigo de si el piloto se paso de frenada.
+
+    Sin este dato en la referencia no hay con que comparar, y el diagnostico
+    post-vuelta no puede existir.
+    """
+    ref = analizar(circuito, analyzer_cfg)
+    frenadas = [e for e in ref["events"] if e["type"] == "brake"]
+
+    assert frenadas
+    for ev in frenadas:
+        assert "abs_s" in ev, "la frenada no dice cuanto trabajo el ABS"
+        assert "min_speed_ms" in ev, "la frenada no dice a cuanto se pasa"
+        assert ev["abs_s"] >= 0.0
+        assert ev["min_speed_ms"] > 0.0
+
+
+def test_el_piloto_de_referencia_usa_el_abs_en_todas_las_frenadas(circuito,
+                                                                 analyzer_cfg):
+    """MEDIDO, y contradice lo que parecia obvio.
+
+    La idea de partida era "si el rapido no activa el ABS y tu si, te has
+    pasado". Falso: el piloto de referencia lo activa en las 7 frenadas de
+    Hockenheim y en las 9 de Winton. Frena al limite y deja que el sistema
+    module; es lo que hace un piloto rapido.
+
+    Por eso el diagnostico NO puede ser un si/no, tiene que ser CUANTO rato.
+    Si algun dia este test falla, la premisa ha cambiado y hay que repensar
+    todo el analisis post-vuelta.
+    """
+    ref = analizar(circuito, analyzer_cfg)
+    frenadas = [e for e in ref["events"] if e["type"] == "brake"]
+
+    sin_abs = [e for e in frenadas if e["abs_s"] == 0.0]
+    assert not sin_abs, f"frenadas sin ABS en la referencia: {sin_abs}"
+
+
+def test_el_abs_dura_mas_en_las_frenadas_mas_fuertes(analyzer_cfg):
+    """La duracion del ABS escala con la intensidad. No es ruido.
+
+    En Hockenheim va de 0.05 s (un roce) a 2.33 s (la frenada mas al limite de
+    la vuelta). Si no hubiese esa relacion, el dato no serviria para medir
+    nada.
+    """
+    ref = analizar("hockenheim", analyzer_cfg)
+    frenadas = [e for e in ref["events"] if e["type"] == "brake"]
+
+    suaves = [e["abs_s"] for e in frenadas if e["peak"] < 0.5]
+    fuertes = [e["abs_s"] for e in frenadas if e["peak"] > 0.8]
+
+    assert suaves and fuertes
+    assert max(suaves) < min(fuertes), (
+        f"el ABS no distingue frenada suave de fuerte: {suaves} vs {fuertes}"
+    )
+
+
+def test_las_frenadas_detectadas_capturan_casi_todo_el_abs(circuito,
+                                                           analyzer_cfg):
+    """Validacion cruzada del detector de frenadas, gratis.
+
+    Si el detector se dejase frenadas, apareceria ABS suelto por la vuelta.
+    Medido: solo 4 muestras sueltas en Hockenheim y 1 en Winton, de miles.
+    """
+    df = a.load_lap(str(CSV[circuito]))
+    largo = a.track_length_from_speed(df)
+    pos = df["LapDistPct"].to_numpy()
+    abs_activo = df["ABSActive"].to_numpy().astype(bool)
+
+    dentro = np.zeros(len(df), dtype=bool)
+    for z in a.detect_events(df, largo, analyzer_cfg):
+        i0 = int(np.argmin(np.abs(pos - z["brake_pos"])))
+        i1 = int(np.argmin(np.abs(pos - z["throttle_pos"])))
+        dentro[i0:i1] = True
+
+    sueltas = int((abs_activo & ~dentro).sum())
+    assert sueltas <= 10, (
+        f"{sueltas} muestras de ABS fuera de toda frenada detectada: "
+        "el detector se esta dejando alguna"
+    )
+
+
 @pytest.mark.parametrize("circuito_esperado,tiene_manage", [
     ("hockenheim", False),
     ("winton", True),

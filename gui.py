@@ -88,11 +88,25 @@ class CoachGUI:
             frm,
             text="Voz: \"Frena, 40%, tercera\" antes de cada aviso",
             variable=self.voice_var,
+            command=self._sync_training,
         )
-        self.voice_chk.grid(row=5, column=0, sticky="w", pady=(0, 6))
+        self.voice_chk.grid(row=5, column=0, sticky="w", pady=(0, 2))
+
+        # Entrenamiento: CUELGA de la voz. Si no hay frase, no hay donde meter
+        # la correccion (un pitido no puede decirte "suave"), asi que al apagar
+        # la voz esta casilla se apaga y se pone en gris. Nada de casillas que
+        # parecen hacer algo y no hacen nada.
+        self.training_var = tk.BooleanVar(value=False)
+        self.training_chk = ttk.Checkbutton(
+            frm,
+            text="   └ Entrenamiento: corrige la curva que peor te sale "
+                 "(\"…tercera, suave\")",
+            variable=self.training_var,
+        )
+        self.training_chk.grid(row=6, column=0, sticky="w", pady=(0, 6))
 
         btns = ttk.Frame(frm)
-        btns.grid(row=6, column=0, sticky="ew", pady=(0, 10))
+        btns.grid(row=7, column=0, sticky="ew", pady=(0, 10))
         btns.columnconfigure(0, weight=1)
         btns.columnconfigure(1, weight=1)
         self.start_btn = ttk.Button(
@@ -108,11 +122,23 @@ class CoachGUI:
         self.log_box = scrolledtext.ScrolledText(
             frm, height=12, state="disabled", wrap="word", font=("Menlo", 11)
         )
-        self.log_box.grid(row=7, column=0, sticky="nsew")
-        frm.rowconfigure(7, weight=1)
+        self.log_box.grid(row=8, column=0, sticky="nsew")
+        frm.rowconfigure(8, weight=1)
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.log("Elige una vuelta de referencia para empezar.")
+
+    def _sync_training(self) -> None:
+        """La casilla de entrenamiento sigue a la de voz.
+
+        Sin frase no hay donde meter la correccion: un pitido no puede decirte
+        "suave". Asi que al apagar la voz, esta casilla se apaga y se agrisa.
+        """
+        if self.voice_var.get():
+            self.training_chk.config(state="normal")
+        else:
+            self.training_var.set(False)
+            self.training_chk.config(state="disabled")
 
     # -----------------------------------------------------------------------
     # Paso 1: procesar la referencia (analyzer es rapido, va sincrono)
@@ -160,6 +186,8 @@ class CoachGUI:
             cmd += ["--replay", str(self.csv)]
         if self.voice_var.get():
             cmd += ["--voice"]
+            if self.training_var.get():
+                cmd += ["--training"]
 
         modo = "prueba (replay)" if self.replay_var.get() else "iRacing en vivo"
         self.log(f"\n▶  Arrancando coach — modo {modo}…")
@@ -177,6 +205,7 @@ class CoachGUI:
         self.pick_btn.config(state="disabled")
         self.replay_chk.config(state="disabled")
         self.voice_chk.config(state="disabled")
+        self.training_chk.config(state="disabled")
 
     def _pump_output(self) -> None:
         assert self.coach_proc is not None and self.coach_proc.stdout is not None
@@ -195,6 +224,7 @@ class CoachGUI:
         self.pick_btn.config(state="normal")
         self.replay_chk.config(state="normal")
         self.voice_chk.config(state="normal")
+        self._sync_training()
         self.start_btn.config(state="normal" if self.reference else "disabled")
 
     # -----------------------------------------------------------------------

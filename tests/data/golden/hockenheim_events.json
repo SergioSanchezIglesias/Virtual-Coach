@@ -11,7 +11,9 @@
       "pos": 0.036874,
       "speed_ms": 61.78,
       "peak": 0.34,
-      "gear": 4
+      "gear": 4,
+      "abs_s": 0.517,
+      "min_speed_ms": 47.4
     },
     {
       "type": "throttle",
@@ -23,7 +25,9 @@
       "pos": 0.154073,
       "speed_ms": 63.41,
       "peak": 1.0,
-      "gear": 2
+      "gear": 2,
+      "abs_s": 1.45,
+      "min_speed_ms": 20.94
     },
     {
       "type": "throttle",
@@ -35,7 +39,9 @@
       "pos": 0.422823,
       "speed_ms": 69.91,
       "peak": 0.94,
-      "gear": 1
+      "gear": 1,
+      "abs_s": 1.533,
+      "min_speed_ms": 11.62
     },
     {
       "type": "throttle",
@@ -47,7 +53,9 @@
       "pos": 0.591092,
       "speed_ms": 62.79,
       "peak": 1.0,
-      "gear": 2
+      "gear": 2,
+      "abs_s": 2.333,
+      "min_speed_ms": 21.65
     },
     {
       "type": "throttle",
@@ -69,7 +77,9 @@
       "pos": 0.730927,
       "speed_ms": 58.47,
       "peak": 0.36,
-      "gear": 3
+      "gear": 3,
+      "abs_s": 0.05,
+      "min_speed_ms": 43.23
     },
     {
       "type": "throttle",
@@ -81,7 +91,9 @@
       "pos": 0.80363,
       "speed_ms": 55.21,
       "peak": 0.88,
-      "gear": 2
+      "gear": 2,
+      "abs_s": 1.583,
+      "min_speed_ms": 23.78
     },
     {
       "type": "throttle",
@@ -93,7 +105,9 @@
       "pos": 0.882962,
       "speed_ms": 48.99,
       "peak": 0.4,
-      "gear": 2
+      "gear": 2,
+      "abs_s": 0.65,
+      "min_speed_ms": 29.6
     },
     {
       "type": "throttle",

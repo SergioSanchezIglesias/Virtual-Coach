@@ -39,6 +39,10 @@ class Frame:
     gear: int
     lap: int
     on_track: bool
+    # El ABS trabajando = le has pedido al coche mas freno del que la goma da.
+    # Solo lo usa el analisis POST-vuelta, nunca el aviso en vivo: un "¡ABS!"
+    # mientras frenas es la peor distraccion posible y ademas llega tarde.
+    abs_active: bool = False
 
 
 class TelemetrySource:
@@ -81,6 +85,11 @@ class ReplaySource(TelemetrySource):
         self.brake = df["Brake"].to_numpy().clip(0.0, 1.0)
         self.throttle = df["Throttle"].to_numpy().clip(0.0, 1.0)
         self.gear = df["Gear"].to_numpy().astype(int)
+        # Un CSV viejo puede no traerlo; entonces es como si nunca saltase.
+        if "ABSActive" in df.columns:
+            self.abs_active = df["ABSActive"].to_numpy().astype(bool)
+        else:
+            self.abs_active = np.zeros(len(df), dtype=bool)
         self.rate = speed
         self.max_laps = max_laps
         self.n = len(df)
@@ -108,6 +117,7 @@ class ReplaySource(TelemetrySource):
                 gear=int(self.gear[i]),
                 lap=lap,
                 on_track=True,
+                abs_active=bool(self.abs_active[i]),
             )
 
             emitted += 1
@@ -187,6 +197,12 @@ class IRacingSource(TelemetrySource):
                     lap=int(self.ir["Lap"] or 0),
                     on_track=bool(self.ir["IsOnTrack"])
                     and not bool(self.ir["OnPitRoad"]),
+                    # PENDIENTE DE CONFIRMAR CON EL JUEGO ABIERTO: el nombre
+                    # del canal. Si no acierta, el SDK devuelve None y esto se
+                    # queda en False, que degrada bien (el analisis dira "sin
+                    # ABS" en vez de romper). Comprobar con:
+                    #     ir.var_headers_names  ->  buscar "ABS"
+                    abs_active=bool(self.ir["BrakeABSactive"]),
                 )
 
             self.ir.unfreeze_var_buffer_latest()

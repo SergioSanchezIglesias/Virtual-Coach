@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
+from review import LapReview, worst
 from source import make_source
 
 SR = 44100  # frecuencia de muestreo del audio
@@ -36,7 +37,11 @@ def _base_dir() -> Path:
 VOCES_DIR = _base_dir() / "voces"
 VOICE_GAP = 0.30  # segundos de colchon entre el fin de la voz y el primer tick
 CLIP_NAMES = ("frena", "suelta", "mediogas", "p20", "p40", "p60", "p80", "p100",
-              "g1", "g2", "g3", "g4", "g5", "g6")
+              "g1", "g2", "g3", "g4", "g5", "g6",
+              # Modo entrenamiento: la correccion de la vuelta anterior, metida
+              # DENTRO de la frase que ya existe. Son ordenes, no reproches:
+              # "suave" se puede obedecer, "aqui te pasaste" solo mete duda.
+              "suave", "aprieta")
 
 
 def load_wav(path: Path) -> np.ndarray:
@@ -154,6 +159,15 @@ class Coach:
         self.fired: set[tuple[int, int]] = set()
         self.last_pos = 0.0
 
+        # --- Analisis post-vuelta -------------------------------------------
+        # Va tomando nota mientras ruedas y cierra el diagnostico al cruzar
+        # meta, que es cuando el dato aun esta fresco en tu cabeza. Nunca dice
+        # nada EN VIVO: un "¡ABS!" mientras frenas distrae y ademas llega tarde.
+        self.review = LapReview(self.events)
+        self.last_review: list = []
+        self.training = getattr(cfg, "training", False)
+        self.training_cue: tuple[float, str] | None = None
+
         console = isinstance(engine, ConsoleEngine)
         self.tones = {
             "brake": "FRENA" if console else make_tone(cfg.brake_freq, cfg.beep_ms),
@@ -201,19 +215,38 @@ class Coach:
 
         # --- Voz (opcional): frase de preparacion antes de cada frenada/lift ---
         self.voice = getattr(cfg, "voice", False)
+        self._console = console
+        self._clips = {}
         if self.voice:
-            clips = {} if console else {
-                n: load_wav(VOCES_DIR / f"{n}.wav") * cfg.voice_volume
-                for n in CLIP_NAMES
-            }
-            for ev in self.events:
-                if console:
-                    ev["_voice"] = self._voice_text(ev)
-                    ev["_voice_dur"] = 1.6 if ev["_voice"] else 0.0
-                else:
-                    buf = self._voice_buffer(ev, clips)
-                    ev["_voice"] = buf
-                    ev["_voice_dur"] = len(buf) / SR if buf is not None else 0.0
+            if not console:
+                self._clips = {
+                    n: load_wav(VOCES_DIR / f"{n}.wav") * cfg.voice_volume
+                    for n in CLIP_NAMES
+                }
+            self._build_voices()
+
+    def _build_voices(self) -> None:
+        """(Re)genera la frase de cada evento.
+
+        Se puede llamar mas de una vez porque en modo entrenamiento la frase de
+        UNA curva cambia al acabar la vuelta: se le anade la correccion.
+        """
+        pos_cue, cue = self.training_cue or (None, None)
+        for ev in self.events:
+            extra = cue if (self.training and pos_cue == ev["pos"]) else None
+            if self._console:
+                ev["_voice"] = self._voice_text(ev, extra)
+                ev["_voice_dur"] = 1.6 if ev["_voice"] else 0.0
+            else:
+                buf = self._voice_buffer(ev, self._clips, extra)
+                ev["_voice"] = buf
+                ev["_voice_dur"] = len(buf) / SR if buf is not None else 0.0
+
+    def set_training_cue(self, pos: float | None, cue: str | None) -> None:
+        """Fija la correccion que se dira en la proxima vuelta, o la quita."""
+        self.training_cue = (pos, cue) if cue else None
+        if self.voice:
+            self._build_voices()
 
     @staticmethod
     def _pct_clip(peak: float) -> str:
@@ -221,7 +254,7 @@ class Coach:
         tramo = max(1, min(5, round(peak * 5)))
         return f"p{tramo * 20}"
 
-    def _voice_buffer(self, ev, clips):
+    def _voice_buffer(self, ev, clips, extra=None):
         """Concatena los clips de una frase: 'frena' + tramo% + marcha."""
         if ev["type"] == "brake":
             parts = [clips["frena"], clips[self._pct_clip(ev.get("peak", 1.0))]]
@@ -237,27 +270,56 @@ class Coach:
                 parts.append(clips[f"g{g}"])
         else:
             return None
+        if extra and extra in clips:
+            parts.append(clips[extra])
         gap = np.zeros(int(SR * 0.04), dtype=np.float32)  # 40 ms entre palabras
         buf = parts[0]
         for p in parts[1:]:
             buf = np.concatenate([buf, gap, p])
         return buf
 
-    def _voice_text(self, ev):
+    def _voice_text(self, ev, extra=None):
         """La misma frase, en texto, para el modo consola."""
         if ev["type"] == "brake":
             parts = ["Frena", f"{self._pct_clip(ev.get('peak', 1.0))[1:]}%"]
             g = ev.get("gear")
             if g and 1 <= g <= 6:
                 parts.append(f"{g}a")
-            return "[voz] " + ", ".join(parts)
-        if ev["type"] == "lift":
-            return "[voz] Suelta"
-        if ev["type"] == "manage":
+        elif ev["type"] == "lift":
+            parts = ["Suelta"]
+        elif ev["type"] == "manage":
+            parts = ["Medio gas"]
             g = ev.get("gear")
-            marcha = f", {g}a" if g and 1 <= g <= 6 else ""
-            return f"[voz] Medio gas{marcha}"
-        return None
+            if g and 1 <= g <= 6:
+                parts.append(f"{g}a")
+        else:
+            return None
+        if extra:
+            parts.append(extra)
+        return "[voz] " + ", ".join(parts)
+
+    def _close_lap(self) -> None:
+        """Cierra la vuelta: diagnostico, resumen escrito y correccion.
+
+        Solo se queda con UNA correccion, la de la curva que mas cuesta.
+        Corregir siete curvas a la vez no es entrenar, es ruido, y acabas
+        apagando el coach. Si la vuelta fue limpia, no se dice nada: el
+        silencio tambien es informacion.
+        """
+        self.last_review = self.review.finish()
+        if not self.last_review:
+            return
+
+        peor = worst(self.last_review)
+        self.set_training_cue(peor.pos if peor else None, peor.cue if peor else None)
+
+        if self.cfg.verbose:
+            corregibles = [d for d in self.last_review if d.verdict != "ok"]
+            if corregibles:
+                print("\n--- vuelta cerrada " + "-" * 40)
+                for d in corregibles:
+                    print("  " + d.describe())
+                print("-" * 58 + "\n", flush=True)
 
     def gap_to(self, event_pos: float, pos: float) -> float:
         """Metros que faltan hasta el evento, resolviendo el paso por meta."""
@@ -267,10 +329,13 @@ class Coach:
         return delta * self.track_length
 
     def on_frame(self, f) -> None:
-        # Vuelta nueva: se rearman todos los avisos.
+        # Vuelta nueva: se rearman todos los avisos y se cierra el analisis.
         if f.lap_pos < self.last_pos - 0.5:
             self.fired.clear()
+            self._close_lap()
         self.last_pos = f.lap_pos
+
+        self.review.on_frame(f)
 
         if not f.on_track or f.speed_ms < 5.0:
             return
@@ -409,6 +474,12 @@ def main():
     ap.add_argument(
         "--voice", action="store_true",
         help="voz de preparacion antes de cada frenada/lift (ademas de los pitidos)",
+    )
+    ap.add_argument(
+        "--training", action="store_true",
+        help="modo entrenamiento: anade a la voz la correccion de la vuelta "
+             "anterior en la curva que mas cuesta (\"...tercera, SUAVE\"). "
+             "Necesita --voice: un pitido no puede decirte que frenes suave",
     )
     ap.add_argument(
         "--voice-volume",
