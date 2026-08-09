@@ -253,6 +253,73 @@ def test_gap_to_resuelve_el_paso_por_meta(evento, piloto, esperado):
     assert coach.gap_to(evento, piloto) == pytest.approx(esperado * 1000.0)
 
 
+# ---------------------------------------------------------------------------
+# El retraso de la tarjeta de sonido
+# ---------------------------------------------------------------------------
+
+
+class EngineConRetraso(GrabadorEngine):
+    """Un motor de audio que tarda en sacar el sonido, como el de Windows."""
+
+    latency_ms = 200.0
+
+
+def rodar_con_engine(circuito: str, engine, **overrides) -> list[dict]:
+    coach = Coach(referencia(circuito), engine, coach_cfg(**overrides))
+    anterior = None
+    for f in ReplaySource(str(CSV[circuito]), speed=0.0, max_laps=3).frames():
+        if anterior is not None and f.lap_pos < anterior - 0.5:
+            engine.giro += 1
+        anterior = f.lap_pos
+        engine.frame = f
+        coach.on_frame(f)
+    return [a for a in engine.avisos if a["giro"] == 1]
+
+
+def test_el_aviso_compensa_el_retraso_de_la_tarjeta_de_sonido(circuito):
+    """En el PC de juego el sonido sale 183 ms tarde y nadie lo descontaba.
+
+    Con --lead 0.35 y ese retraso, la antelacion REAL era de 0.167 s: la
+    mitad de la pedida. A 220 km/h son 10 m en vez de 21. El coach medía la
+    latencia, la imprimia por pantalla... y no la usaba para nada.
+    """
+    sin = rodar_con_engine(circuito, GrabadorEngine(), countdown=0)
+    con = rodar_con_engine(circuito, EngineConRetraso(), countdown=0)
+
+    assert len(sin) == len(con)
+    for a, b in zip(sin, con):
+        assert a["aviso"] == b["aviso"]
+        assert b["pos"] < a["pos"], "no se adelanto para compensar el retraso"
+
+
+def test_la_compensacion_equivale_a_pedir_mas_antelacion(circuito):
+    """Compensar 200 ms tiene que dar lo mismo que pedir 0.2 s mas de lead."""
+    con_retraso = rodar_con_engine(circuito, EngineConRetraso(),
+                                   countdown=0, lead=0.35)
+    mas_lead = rodar_con_engine(circuito, GrabadorEngine(),
+                                countdown=0, lead=0.55)
+
+    assert [a["pos"] for a in con_retraso] == [a["pos"] for a in mas_lead]
+
+
+def test_se_puede_forzar_la_latencia_a_mano(circuito):
+    """Si la medida del sistema miente, tiene que poder corregirse."""
+    medida = rodar_con_engine(circuito, EngineConRetraso(), countdown=0)
+    forzada = rodar_con_engine(circuito, GrabadorEngine(),
+                               countdown=0, audio_latency=200.0)
+
+    assert [a["pos"] for a in medida] == [a["pos"] for a in forzada]
+
+
+def test_sin_retraso_todo_suena_donde_siempre(circuito):
+    """El modo consola no tiene latencia: los golden no se pueden mover."""
+    engine = GrabadorEngine()
+    assert engine.latency_ms == 0.0
+    assert rodar_con_engine(circuito, engine, countdown=0) == giro_completo(
+        circuito, countdown=0
+    )
+
+
 @pytest.mark.parametrize("pico,clip", [
     (0.10, "p20"),   # nunca por debajo de p20: "frena 0%" no existe
     (0.34, "p40"),

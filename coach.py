@@ -154,6 +154,23 @@ class Coach:
         self.fired: set[tuple[int, int]] = set()
         self.last_pos = 0.0
 
+        # --- El retraso de la tarjeta de sonido ------------------------------
+        #
+        # Entre que el coach pide un pitido y el altavoz lo suelta pasa un
+        # tiempo, y en Windows no es despreciable: 183 ms medidos en el PC de
+        # juego (en el Mac son unos pocos). Ese retraso se estaba MIDIENDO e
+        # IMPRIMIENDO por pantalla desde el primer dia... y no se usaba.
+        #
+        # Con --lead 0.35 y 183 ms de retraso, la antelacion real era de 0.167 s:
+        # justo la mitad de la pedida. A 220 km/h, 10 metros en vez de 21.
+        #
+        # Se suma al lead para que el sonido LLEGUE cuando toca, no para que
+        # salga cuando toca. Si la medida del sistema miente, --audio-latency
+        # la sustituye.
+        forzada = getattr(cfg, "audio_latency", None)
+        medida = getattr(engine, "latency_ms", 0.0) or 0.0
+        self.audio_latency_s = (forzada if forzada is not None else medida) / 1000.0
+
         console = isinstance(engine, ConsoleEngine)
         self.tones = {
             "brake": "FRENA" if console else make_tone(cfg.brake_freq, cfg.beep_ms),
@@ -279,7 +296,8 @@ class Coach:
         # recorres 24 metros en el mismo tiempo que 8 metros a 80 km/h: un
         # offset fijo en metros seria correcto en una curva y absurdo en las
         # demas. El margen de seguridad si va en metros y se convierte aqui.
-        lead = self.cfg.lead + self.cfg.margin / max(f.speed_ms, 1.0)
+        lead = (self.cfg.lead + self.audio_latency_s
+                + self.cfg.margin / max(f.speed_ms, 1.0))
 
         for i, ev in enumerate(self.events):
             gap = self.gap_to(ev["pos"], f.lap_pos)
@@ -371,6 +389,15 @@ def main():
         help="metros extra de antelacion (margen de seguridad)",
     )
     ap.add_argument(
+        "--audio-latency",
+        type=float,
+        default=None,
+        help="milisegundos que tarda la tarjeta en soltar el sonido. Por "
+             "defecto se usa el valor que declara el sistema y se DESCUENTA de "
+             "la antelacion, para que el pitido llegue cuando toca. Ponlo a "
+             "mano solo si la medida del sistema miente (0 lo desactiva)",
+    )
+    ap.add_argument(
         "--speed-tol",
         type=float,
         default=0.10,
@@ -445,9 +472,18 @@ def main():
         if cfg.countdown
         else ""
     )
-    print(f"Antelacion: {cfg.lead:.2f} s + {cfg.margin:.0f} m{cuenta}\n")
+    print(f"Antelacion: {cfg.lead:.2f} s + {cfg.margin:.0f} m{cuenta}")
 
     coach = Coach(reference, engine, cfg)
+
+    # Que se vea lo que de verdad va a pasar. Sin esto, la antelacion que se
+    # imprime es la PEDIDA, no la que llega al oido: en el PC de juego el
+    # sonido sale 183 ms tarde y eso se comia la mitad del aviso.
+    if coach.audio_latency_s > 0:
+        print(f"Compensando {coach.audio_latency_s * 1000:.0f} ms de retraso de "
+              f"la tarjeta: se pide el pitido {coach.audio_latency_s:.3f} s "
+              f"antes para que LLEGUE a tiempo")
+    print()
 
     try:
         with make_source(cfg.replay, cfg.replay_speed, cfg.laps) as src:

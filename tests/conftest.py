@@ -85,6 +85,7 @@ def coach_cfg(**overrides) -> SimpleNamespace:
     cfg = SimpleNamespace(
         lead=0.35,
         margin=0.0,
+        audio_latency=None,
         speed_tol=0.10,
         skip_mismatch=False,
         countdown=3,

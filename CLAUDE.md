@@ -79,6 +79,17 @@ el punto de frenada ajeno no le aplica. Existe `--skip-mismatch` para callarlo.
 tonos pregenerados en RAM. Nada de abrir streams ni cargar ficheros por aviso.
 Los tonos llevan envolvente de 6 ms para no hacer click.
 
+**El retraso de la tarjeta se DESCUENTA de la antelación** (`--audio-latency`,
+por defecto el que declara el sistema). Encontrado en el log de una sesión real:
+el PC de juego declara **182.9 ms** de latencia de salida, y ese número se venía
+midiendo e imprimiendo desde el primer día **sin usarse para nada**. Con
+`--lead 0.35`, la antelación real era 0.167 s — **la mitad**; a 220 km/h, 10 m
+en vez de 21. En el Mac no se veía porque ahí son unos pocos milisegundos.
+Se suma al `lead` para que el pitido **llegue** cuando toca, no para que salga
+cuando toca. Los golden no se movieron: `ConsoleEngine` declara latencia 0.
+Sospecha razonable: parte del afinado "al oído" de `--countdown-interval` estaba
+compensando esto a mano.
+
 **El volumen de la voz es un ajuste PERCEPTUAL, no matemático** (`--voice-volume`,
 por defecto 0.60). La voz se oía más alta que los pitidos, pero **no es que los
 clips vengan saturados**: medidos, sus picos van de 0.295 a 0.561, comparables al
