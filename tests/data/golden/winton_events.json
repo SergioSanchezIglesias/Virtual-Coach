@@ -1,0 +1,134 @@
+{
+  "sim": "iracing",
+  "track": "winton",
+  "car": "test",
+  "track_length_m": 2946.0,
+  "laptime_s": null,
+  "source": "garage61",
+  "events": [
+    {
+      "type": "brake",
+      "pos": 0.054778,
+      "speed_ms": 60.64,
+      "peak": 0.78,
+      "gear": 2
+    },
+    {
+      "type": "throttle",
+      "pos": 0.087741,
+      "speed_ms": 34.26
+    },
+    {
+      "type": "lift",
+      "pos": 0.103538,
+      "speed_ms": 37.64
+    },
+    {
+      "type": "throttle",
+      "pos": 0.109382,
+      "speed_ms": 38.16
+    },
+    {
+      "type": "brake",
+      "pos": 0.183885,
+      "speed_ms": 52.36,
+      "peak": 0.73,
+      "gear": 2
+    },
+    {
+      "type": "throttle",
+      "pos": 0.216925,
+      "speed_ms": 29.4
+    },
+    {
+      "type": "brake",
+      "pos": 0.251264,
+      "speed_ms": 40.63,
+      "peak": 0.41,
+      "gear": 2
+    },
+    {
+      "type": "throttle",
+      "pos": 0.265926,
+      "speed_ms": 33.59
+    },
+    {
+      "type": "manage",
+      "pos": 0.367221,
+      "speed_ms": 47.84,
+      "gear": 3
+    },
+    {
+      "type": "brake",
+      "pos": 0.45062,
+      "speed_ms": 42.22,
+      "peak": 0.44,
+      "gear": 1
+    },
+    {
+      "type": "throttle",
+      "pos": 0.486596,
+      "speed_ms": 18.81
+    },
+    {
+      "type": "brake",
+      "pos": 0.515345,
+      "speed_ms": 34.79,
+      "peak": 0.36,
+      "gear": 1
+    },
+    {
+      "type": "throttle",
+      "pos": 0.532112,
+      "speed_ms": 24.85
+    },
+    {
+      "type": "brake",
+      "pos": 0.560584,
+      "speed_ms": 33.25,
+      "peak": 0.45,
+      "gear": 1
+    },
+    {
+      "type": "throttle",
+      "pos": 0.580044,
+      "speed_ms": 19.04
+    },
+    {
+      "type": "brake",
+      "pos": 0.672402,
+      "speed_ms": 50.95,
+      "peak": 0.7,
+      "gear": 1
+    },
+    {
+      "type": "throttle",
+      "pos": 0.70374,
+      "speed_ms": 23.87
+    },
+    {
+      "type": "brake",
+      "pos": 0.819041,
+      "speed_ms": 54.76,
+      "peak": 0.7,
+      "gear": 2
+    },
+    {
+      "type": "throttle",
+      "pos": 0.85518,
+      "speed_ms": 25.37
+    },
+    {
+      "type": "brake",
+      "pos": 0.876033,
+      "speed_ms": 34.8,
+      "peak": 0.39,
+      "gear": 2
+    },
+    {
+      "type": "throttle",
+      "pos": 0.886461,
+      "speed_ms": 28.64
+    }
+  ]
+}

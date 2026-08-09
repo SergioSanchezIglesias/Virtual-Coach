@@ -1,0 +1,732 @@
+[
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.1626
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.1628
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.1696
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 0,
+    "pos": 0.178
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 0,
+    "pos": 0.2133
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.2309
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.2356
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.2408
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 0,
+    "pos": 0.2468
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 0,
+    "pos": 0.2619
+  },
+  {
+    "aviso": "MEDIO GAS",
+    "giro": 0,
+    "pos": 0.3614
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.4244
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.4309
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.438
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 0,
+    "pos": 0.4455
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 0,
+    "pos": 0.4842
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.4994
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.5026
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.5066
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 0,
+    "pos": 0.5115
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 0,
+    "pos": 0.529
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.545
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.5485
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.5524
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 0,
+    "pos": 0.557
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 0,
+    "pos": 0.5776
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.644
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.651
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.6586
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 0,
+    "pos": 0.6667
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 0,
+    "pos": 0.7008
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.7873
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.7954
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.8041
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 0,
+    "pos": 0.8129
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 0,
+    "pos": 0.8521
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.8596
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.8631
+  },
+  {
+    "aviso": "  .",
+    "giro": 0,
+    "pos": 0.8674
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 0,
+    "pos": 0.8722
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 0,
+    "pos": 0.883
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.019
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.0282
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.0378
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.0479
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.0835
+  },
+  {
+    "aviso": "SUELTA",
+    "giro": 1,
+    "pos": 0.0994
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.105
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.1546
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.1619
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.1696
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.178
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.2133
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.2309
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.2356
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.2408
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.2468
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.2619
+  },
+  {
+    "aviso": "MEDIO GAS",
+    "giro": 1,
+    "pos": 0.3614
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.4244
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.4309
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.438
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.4455
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.4842
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.4994
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.5026
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.5066
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.5115
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.529
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.545
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.5485
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.5524
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.557
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.5776
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.644
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.651
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.6586
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.6667
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.7008
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.7873
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.7954
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.8041
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.8129
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.8521
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.8596
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.8631
+  },
+  {
+    "aviso": "  .",
+    "giro": 1,
+    "pos": 0.8674
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 1,
+    "pos": 0.8722
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 1,
+    "pos": 0.883
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.019
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.0282
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.0378
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.0479
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.0835
+  },
+  {
+    "aviso": "SUELTA",
+    "giro": 2,
+    "pos": 0.0994
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.105
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.1546
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.1619
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.1696
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.178
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.2133
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.2309
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.2356
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.2408
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.2468
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.2619
+  },
+  {
+    "aviso": "MEDIO GAS",
+    "giro": 2,
+    "pos": 0.3614
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.4244
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.4309
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.438
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.4455
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.4842
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.4994
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.5026
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.5066
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.5115
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.529
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.545
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.5485
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.5524
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.557
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.5776
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.644
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.651
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.6586
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.6667
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.7008
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.7873
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.7954
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.8041
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.8129
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.8521
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.8596
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.8631
+  },
+  {
+    "aviso": "  .",
+    "giro": 2,
+    "pos": 0.8674
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 2,
+    "pos": 0.8722
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 2,
+    "pos": 0.883
+  },
+  {
+    "aviso": "  .",
+    "giro": 3,
+    "pos": 0.019
+  },
+  {
+    "aviso": "  .",
+    "giro": 3,
+    "pos": 0.0282
+  },
+  {
+    "aviso": "  .",
+    "giro": 3,
+    "pos": 0.0378
+  },
+  {
+    "aviso": "FRENA",
+    "giro": 3,
+    "pos": 0.0479
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 3,
+    "pos": 0.0835
+  },
+  {
+    "aviso": "SUELTA",
+    "giro": 3,
+    "pos": 0.0994
+  },
+  {
+    "aviso": "GAS  ",
+    "giro": 3,
+    "pos": 0.105
+  },
+  {
+    "aviso": "  .",
+    "giro": 3,
+    "pos": 0.1546
+  },
+  {
+    "aviso": "  .",
+    "giro": 3,
+    "pos": 0.1619
+  }
+]
