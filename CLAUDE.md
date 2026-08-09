@@ -179,6 +179,38 @@ audio y voz encontrando los clips del bundle. En Windows falta estrenarlo.
 
 ## Siguiente paso
 
-Construir el `.exe` en Windows y estrenarlo. Y en pista, seguir afinando `--lead`
-(0.35 s por defecto). Pendiente menor: la voz suena algo más alta que los pitidos;
-si molesta, igualar niveles.
+**Validado en carrera real: Sergio quedó 2º.** La app está madura. El siguiente
+paso es elegir una idea del backlog de abajo. Pendiente menor arrastrado: igualar
+el volumen de la voz con el de los pitidos (la voz suena algo más alta).
+
+## Ideas de mejora (backlog)
+
+La app está madura y validada en competición; el mayor riesgo al iterar es el
+*feature creep*. **Línea roja de cualquier mejora**: respetar lo que la hizo
+buena — audio mínimo, no distraer al conducir, no dar información falsa.
+Direcciones propuestas (sin prioridad cerrada), planteadas tras el podio:
+
+- **De avisar a ENSEÑAR (feedback de dónde pierdes tiempo).** Hoy el coach dice
+  *dónde* frenar/acelerar. El salto cualitativo: tras cada vuelta, decir en qué
+  curvas pierdes tiempo respecto a la referencia ("perdiste 3 décimas en la
+  curva 3"). Requiere grabar tu telemetría en vivo (`IRacingSource` ya da los
+  frames) y compararla con el perfil COMPLETO de la referencia (el CSV, no solo
+  los eventos del JSON), alineados por `LapDistPct`. Es lo de mayor valor para
+  mejorar, y lo más grande. Cuidado: feedback EN VIVO distrae; hacerlo
+  POST-vuelta (al cruzar meta o en boxes) es lo coherente con la filosofía.
+
+- **Comodidad diaria.** (a) Que el coach detecte el circuito activo en iRacing
+  (el SDK da el nombre del track) y cargue solo la referencia correcta de una
+  biblioteca. (b) Exponer `--lead`, `--countdown-interval`, volumen y elección de
+  voz en la GUI (sliders/campos) para afinar al oído sin tocar comandos. Bajo
+  riesgo, alta comodidad diaria.
+
+- **Referencias propias (sin Garage61).** Un modo grabación que vuelca los frames
+  de `IRacingSource` a un CSV (mismas columnas que Garage61) para procesarlo con
+  `analyzer.py`. Da autonomía. Ojo: tu propia vuelta como referencia solo te guía
+  hasta tu ritmo actual; el valor de Garage61 es que da vueltas de pilotos más
+  rápidos. Útil para consistencia o circuitos sin referencia externa.
+
+- **Pulir y robustecer.** Igualar el volumen de la voz con el de los pitidos.
+  Afinar la detección en más circuitos (el patrón `manage` es el más delicado:
+  vigilar falsos positivos). Cubrir casos raros de telemetría.
