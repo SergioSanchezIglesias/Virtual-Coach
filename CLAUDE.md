@@ -19,6 +19,7 @@ Trabajamos en español.
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
+| `tests/` | red de regresión sobre las dos vueltas validadas | 57 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -57,9 +58,18 @@ sería correcto en una curva y absurdo en las demás. El `--margin` sí va en
 metros porque es un margen de seguridad deliberado.
 
 **La cuenta atrás (`--countdown`) solo va en las frenadas**, con ticks
-espaciados en tiempo (ritmo de metrónomo) y usando el mismo tono del freno
-pero corto y bajito. El aviso de gas es un "ya puedes", no necesita
-preparación, y ponérsela subiría de 30 a 48 sonidos por vuelta.
+espaciados en tiempo (ritmo de metrónomo). El aviso de gas es un "ya puedes",
+no necesita preparación, y ponérsela subiría de 30 a 48 sonidos por vuelta.
+
+**Los ticks son una ESCALA ASCENDENTE que remata en el pitido de frenada**
+(333 → 400 → 511 Hz, y el pitido a 622). Antes compartían el tono del freno y
+solo se distinguían por durar menos y sonar más bajo; **rodando se comprobó que
+esa diferencia es demasiado fina**: con ruido de motor un tick y el pitido se
+confunden. La escala los separa y además dice en qué tick vas sin contarlos —
+el más agudo es el último. La rampa se reparte entre `--count-freq` y el tono
+del freno en vez de subir un factor fijo, así ningún tick puede alcanzar al
+pitido tenga la cuenta 3 ticks u 8. Cambiar esto **no movió ni un aviso**: los
+golden de `tests/` siguen idénticos a los de la versión que corrió la carrera.
 
 **Validación de velocidad**: cada evento guarda la velocidad de la referencia
 en ese punto. Si el piloto llega con una desviación mayor que `--speed-tol`,
@@ -68,6 +78,14 @@ el punto de frenada ajeno no le aplica. Existe `--skip-mismatch` para callarlo.
 **Audio de latencia mínima**: un único stream abierto toda la sesión y los
 tonos pregenerados en RAM. Nada de abrir streams ni cargar ficheros por aviso.
 Los tonos llevan envolvente de 6 ms para no hacer click.
+
+**El volumen de la voz es un ajuste PERCEPTUAL, no matemático** (`--voice-volume`,
+por defecto 0.60). La voz se oía más alta que los pitidos, pero **no es que los
+clips vengan saturados**: medidos, sus picos van de 0.295 a 0.561, comparables al
+0.35 del tono, y su RMS (0.06-0.10) es MENOR que el del pitido (0.247). La causa
+es otra: el oído integra la sonoridad en unos 200 ms y el pitido dura 90, así que
+se percibe más bajo de lo que mide. Por eso **no hay que normalizar por pico**
+(empeoraría): se atenúa la voz y se afina al oído.
 
 **El motor de audio es un MEZCLADOR**: suma los sonidos activos en vez de que
 cada uno corte al anterior. Así la voz de preparación y el pitido del punto
@@ -97,8 +115,17 @@ pleno, coherente con la regla del gas en las frenadas.
 
 **Toda frenada real avisa, por suave que sea; el umbral solo filtra roces.**
 `BRAKE_MIN_PEAK` bajó de 0.35 a 0.30 para no perder la curva 1 de Hockenheim
-(un toque de 0.34). Hay hueco limpio: no existen picos reales entre 0.05 y 0.34.
-Si en otro circuito aparecen avisos fantasma, subirlo por CLI.
+(un toque de 0.34). Si en otro circuito aparecen avisos fantasma, subirlo por CLI.
+
+**Corrección medida (antes se afirmaba que no había picos entre 0.05 y 0.34):**
+eso solo es cierto en Hockenheim. **Winton tiene cinco toques bajo umbral**, de
+0.036 a 0.109, y no están repartidos: caen **todos entre el 35 % y el 41 %** de
+la vuelta, que es estabilizar el coche mientras se modula el gas, no frenar. El
+hueco real medido va de 0.109 a 0.355, así que el umbral de 0.30 sigue seguro,
+pero con **holgura amplia por abajo y estrecha por arriba** (la curva 1 de
+Hockenheim entra con 0.336). Lo vigila `test_hueco_alrededor_del_umbral_de_freno`:
+si un circuito nuevo mete un pico en la banda 0.15-0.30 ya no se puede decidir
+por altura si es aviso o ruido, y hay que mirarlo sobre los datos.
 
 **La voz (`--voice`) es preparación anticipada; el pitido sigue siendo el
 gatillo.** Secuencia por frenada: VOZ ("Frena, 40%, tercera") → cuenta atrás
@@ -130,6 +157,11 @@ se descartan las pegadas a una frenada o lift ya detectados. La marcha es la del
 el patrón MÁS delicado: vigilar falsos positivos al estrenar circuitos, se ajusta
 con `--manage-*` (crossings, duración, umbrales).
 
+**Los tests congelan lo que ganó la carrera, y por eso van SIEMPRE primero.**
+Antes de tocar nada del core se fotografía el comportamiento actual (`golden`) y
+solo entonces se cambia. Si se escriben después, se congela el comportamiento
+nuevo — el que nadie ha validado — y la red no sirve de nada. Ver `## Tests`.
+
 ## Contexto que importa
 
 La referencia es de **otro piloto más rápido** (1 s). Eso es deliberado pero
@@ -151,6 +183,39 @@ pronto.
 - `LapDistPct × longitud` es aproximado (spline del circuito vs trazada real);
   no fiarse de los metros al centímetro
 
+## Tests
+
+    .venv/bin/python -m pytest tests/ -q      # 57 tests, ~2.5 s
+
+Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
+determinista, así que "lo que suena en una vuelta" se puede congelar en un
+fichero y comparar. Tres capas:
+
+- **Golden** (`tests/data/golden/`): el JSON de eventos del analyzer y la
+  secuencia completa de avisos del coach, evento a evento y con su posición.
+  Para re-fotografiar a propósito, borra el golden y vuelve a correr — pero
+  solo si el cambio está validado.
+- **Invariantes**: cada test defiende una decisión de arriba (el auto-blip que
+  obliga a detectar el gas por la suelta del freno, el margen que adelanta el
+  aviso, el % redondeado a tramos de 20, la rotación de Winton…). No comprueban
+  la implementación, comprueban el MOTIVO.
+- **Audio** (`test_audio.py`): mide por FFT la frecuencia real de cada tono. Un
+  aviso que no se distingue de otro no sirve, y eso no se ve leyendo el código.
+
+Los CSV de `tests/data/` son **copias congeladas** de las dos vueltas
+validadas, versionadas con una excepción en `.gitignore` (353 KB comprimidos).
+Son copias a propósito: los CSV de la raíz los sobrescribes al exportar de
+Garage61, y un fixture que cambia bajo los pies no congela nada.
+
+**Defecto conocido y documentado en `test_el_lap_del_replay_no_es_la_vuelta_del_circuito`:**
+`ReplaySource` incrementa `lap` al agotar el buffer del CSV, no al cruzar meta.
+En Hockenheim da igual (empieza en meta), pero **Winton arranca en el 16 %** y
+ahí el cruce cae a mitad del buffer, con `frame.lap` desfasado. Hoy no rompe
+nada porque **nadie fuera de `source.py` lee `frame.lap`** — el coach se orienta
+solo con `lap_pos`. Pero en este punto el replay **no es fiel a iRacing**, que
+sí incrementa `Lap` al cruzar meta, y cualquier función que cuente vueltas (el
+análisis post-vuelta) se comería el desfase.
+
 ## Entorno
 
 - Desarrollo en **Mac**; iRacing está en una **máquina Windows aparte**
@@ -159,7 +224,9 @@ pronto.
   Tools con **Tk 8.5**: `gui.py` abre vacía en el Mac por un bug viejo de ese
   Tk (los widgets no se pintan). En Windows (Tk 8.6) no ocurre. Migrar a un
   Python de Homebrew lo arreglaría y sigue pendiente
-- `.gitignore` excluye los CSV crudos; los JSON de referencia sí se versionan
+- `.gitignore` excluye los CSV crudos; los JSON de referencia sí se versionan.
+  **Excepción**: `tests/data/*.csv` sí van al repo (son los fixtures)
+- `pytest` es dependencia solo de desarrollo; el runtime no la necesita
 
 ## Empaquetado (.exe)
 
@@ -179,9 +246,22 @@ audio y voz encontrando los clips del bundle. En Windows falta estrenarlo.
 
 ## Siguiente paso
 
-**Validado en carrera real: Sergio quedó 2º.** La app está madura. El siguiente
-paso es elegir una idea del backlog de abajo. Pendiente menor arrastrado: igualar
-el volumen de la voz con el de los pitidos (la voz suena algo más alta).
+**Validado en carrera real: Sergio quedó 2º.** La app está madura.
+
+Hecho tras el podio (en `main`, con la red de tests puesta antes de tocar nada):
+ticks ascendentes, `--voice-volume`, y `tests/` con 57 tests. **Falta probar los
+ticks nuevos en pista** y afinar `--voice-volume` al oído.
+
+En rama aparte, pendientes de implementar y probar:
+
+- **Usar `ABSActive`** (idea D). Distingue dos errores que dan el mismo síntoma:
+  llegar lento por frenar pronto y suave, o por frenar tarde y pasarse (ahí salta
+  el ABS, la rueda no genera fuerza lateral y te vas largo). La corrección es la
+  contraria en cada caso. **Diagnóstico post-vuelta, jamás en vivo.**
+- **Casos raros de sesión** (idea E). Out-lap con gomas y frenos fríos avisando
+  puntos de vuelta caliente (información falsa donde más duele), entrada a boxes,
+  rearme tras reset, banderas. Un gestor de estado que decida cuándo el coach
+  está ACTIVO.
 
 ## Ideas de mejora (backlog)
 

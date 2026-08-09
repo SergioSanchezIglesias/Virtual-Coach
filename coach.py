@@ -160,12 +160,6 @@ class Coach:
             "throttle": "GAS  "
             if console
             else make_tone(cfg.throttle_freq, cfg.beep_ms),
-            # El tick de cuenta atras es el MISMO tono del freno, pero corto y
-            # bajito. Asi se lee como "esto que viene es una frenada" y no
-            # como un aviso distinto que hay que aprender aparte.
-            "count": "  ."
-            if console
-            else make_tone(cfg.brake_freq, cfg.count_ms, volume=cfg.count_volume),
             # Lift = levantar sin frenar. Tono propio, entre el grave del freno
             # y el agudo del gas, para que no se confunda con ninguno.
             "lift": "SUELTA"
@@ -177,11 +171,40 @@ class Coach:
             else make_tone(cfg.manage_freq, cfg.beep_ms),
         }
 
+        # --- Cuenta atras: una ESCALA ASCENDENTE que remata en el pitido -----
+        #
+        # Antes los ticks usaban el mismo tono del freno, solo que cortos y
+        # bajitos, con la idea de que se leyesen como "esto que viene es una
+        # frenada". Rodando resulto que esa diferencia es demasiado fina: con
+        # ruido de motor, un tick y el pitido se confundian.
+        #
+        # Ahora cada tick suena mas agudo que el anterior y el pitido de
+        # frenada remata la escala por arriba. Ademas de distinguirse, sabes en
+        # que tick vas sin contar: el mas agudo es el ultimo.
+        #
+        # La rampa se REPARTE entre count_freq y el tono del freno en vez de
+        # subir un factor fijo por tick. Asi ningun tick puede alcanzar al
+        # pitido, tenga la cuenta atras 3 ticks o 8.
+        self.count_tones = []
+        n_count = max(0, getattr(cfg, "countdown", 0))
+        if n_count:
+            ratio = (cfg.brake_freq / cfg.count_freq) ** (1.0 / n_count)
+            for i in range(n_count):
+                if console:
+                    self.count_tones.append("  .")
+                else:
+                    self.count_tones.append(make_tone(
+                        cfg.count_freq * ratio ** i,
+                        cfg.count_ms,
+                        volume=cfg.count_volume,
+                    ))
+
         # --- Voz (opcional): frase de preparacion antes de cada frenada/lift ---
         self.voice = getattr(cfg, "voice", False)
         if self.voice:
             clips = {} if console else {
-                n: load_wav(VOCES_DIR / f"{n}.wav") for n in CLIP_NAMES
+                n: load_wav(VOCES_DIR / f"{n}.wav") * cfg.voice_volume
+                for n in CLIP_NAMES
             }
             for ev in self.events:
                 if console:
@@ -290,7 +313,10 @@ class Coach:
                 self.fired.add((i, k))
 
                 if k > 0:
-                    self.engine.play(self.tones["count"])
+                    # k cuenta hacia atras (el tick mas temprano tiene la k mas
+                    # alta), asi que se invierte para recorrer la escala de
+                    # grave a agudo segun se acerca el punto.
+                    self.engine.play(self.count_tones[n_ticks - k])
                     break
 
                 # ¿Llego a este punto a una velocidad comparable a la
@@ -369,6 +395,13 @@ def main():
     )
     ap.add_argument("--count-ms", type=int, default=45)
     ap.add_argument("--count-volume", type=float, default=0.20)
+    ap.add_argument(
+        "--count-freq",
+        type=float,
+        default=330.0,
+        help="Hz del PRIMER tick. Los siguientes suben en escala hasta quedar "
+             "justo por debajo del tono del freno, que remata la cuenta",
+    )
     ap.add_argument("--brake-freq", type=float, default=620.0)
     ap.add_argument("--throttle-freq", type=float, default=1050.0)
     ap.add_argument("--lift-freq", type=float, default=820.0)
@@ -376,6 +409,15 @@ def main():
     ap.add_argument(
         "--voice", action="store_true",
         help="voz de preparacion antes de cada frenada/lift (ademas de los pitidos)",
+    )
+    ap.add_argument(
+        "--voice-volume",
+        type=float,
+        default=0.60,
+        help="ganancia de los clips de voz. Rodando se oian mas altos que los "
+             "pitidos: no porque vengan saturados (sus picos son parecidos), "
+             "sino porque duran mas y el oido integra la sonoridad. Es un "
+             "ajuste perceptual, afinalo a tu gusto",
     )
     ap.add_argument("--beep-ms", type=int, default=90)
     ap.add_argument("-q", "--quiet", dest="verbose", action="store_false")
