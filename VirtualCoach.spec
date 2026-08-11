@@ -23,13 +23,19 @@ sd_datas, sd_binaries, sd_hidden = collect_all("sounddevice")
 # el .exe arranca y revienta al pintar la primera ventana.
 ctk_datas, ctk_binaries, ctk_hidden = collect_all("customtkinter")
 
+# darkdetect (dependencia de customtkinter) elige su modulo por plataforma
+# DENTRO de un if sys.platform, en tiempo de ejecucion. Lo que PyInstaller ve
+# al analizar el codigo no basta para garantizar que _windows_detect viaje.
+dd_datas, dd_binaries, dd_hidden = collect_all("darkdetect")
+
 a = Analysis(
     ["app.py"],
     pathex=[],
-    binaries=sd_binaries + ctk_binaries,
+    binaries=sd_binaries + ctk_binaries + dd_binaries,
     # los clips de voz viajan dentro
-    datas=[("voces", "voces")] + sd_datas + ctk_datas,
-    hiddenimports=["irsdk"] + sd_hidden + ctk_hidden,  # pyirsdk se importa tarde, hay que forzarlo
+    datas=[("voces", "voces")] + sd_datas + ctk_datas + dd_datas,
+    # pyirsdk se importa tarde, hay que forzarlo
+    hiddenimports=["irsdk"] + sd_hidden + ctk_hidden + dd_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

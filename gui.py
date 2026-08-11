@@ -34,8 +34,11 @@ from tkinter import filedialog
 
 try:
     import customtkinter as ctk
-except ImportError:  # mensaje claro en vez de un traceback de 20 lineas
-    sys.exit("Falta customtkinter. Instalalo con:  pip install customtkinter")
+except ImportError as exc:  # se relanza: app.py lo escribe al log de arranque
+    raise ImportError(
+        "Falta customtkinter. En desarrollo: pip install customtkinter. "
+        "En el .exe: revisa collect_all('customtkinter') en VirtualCoach.spec"
+    ) from exc
 
 HERE = Path(__file__).resolve().parent
 
