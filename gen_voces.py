@@ -26,6 +26,17 @@ VOZ = "es-ES-AlvaroNeural"  # masculina, Espana, neuronal
 SR = 44100
 OUT = Path(__file__).resolve().parent / "voces"
 
+# Velocidad del habla. La voz por defecto de edge-tts va deprisa: probando en
+# pista costaba entenderla con el ruido del coche encima. Se genera mas lenta.
+#
+# No es gratis: una voz mas lenta dura mas, y la frase tiene que caber ANTES de
+# la curva (voz + cuenta atras + antelacion). En Hockenheim y Winton ya hay
+# curvas donde la frase arranca antes de pasar la anterior (-36 m y -64 m
+# medidos); esto lo agrava un poco. Se sostiene porque el motor de audio SUMA
+# los sonidos en vez de cortarlos. Si algun dia estorba, las palancas son
+# acortar la cuenta atras o la propia frase, no volver a acelerar la voz.
+RATE = "-15%"
+
 # nombre de fichero -> texto a pronunciar
 CLIPS = {
     "frena": "Frena",
@@ -59,7 +70,7 @@ def trim_silence(samples: np.ndarray, thresh: int = 200,
     return samples[a:b]
 
 
-def synth(text: str, wav_path: Path) -> None:
+def synth(text: str, wav_path: Path, rate: str = RATE) -> None:
     """Sintetiza `text` a un WAV mono 16-bit 44100 con voz neuronal."""
     import sys
 
@@ -67,9 +78,11 @@ def synth(text: str, wav_path: Path) -> None:
     # Se invoca como modulo del MISMO Python que corre este script. Llamar al
     # comando "edge-tts" a secas falla si el venv no esta activado: el binario
     # vive dentro de .venv/bin y no esta en el PATH.
+    # OJO con --rate: el valor empieza por guion ("-15%") y separado en dos
+    # argumentos argparse lo toma por otro flag y falla. Va pegado con "=".
     subprocess.run(
-        [sys.executable, "-m", "edge_tts", "--voice", VOZ, "--text", text,
-         "--write-media", str(mp3)],
+        [sys.executable, "-m", "edge_tts", "--voice", VOZ, f"--rate={rate}",
+         "--text", text, "--write-media", str(mp3)],
         check=True, capture_output=True,
     )
     dec = miniaudio.decode_file(str(mp3), nchannels=1, sample_rate=SR)
@@ -89,6 +102,10 @@ def main() -> None:
     # versionados y validados al oido: regenerarlos por accidente al anadir una
     # palabra nueva cambiaria sin querer lo que ya suena bien.
     forzar = "--force" in sys.argv
+    rate = RATE
+    for arg in sys.argv[1:]:
+        if arg.startswith("--rate="):
+            rate = arg.split("=", 1)[1]
 
     OUT.mkdir(exist_ok=True)
     nuevos = 0
@@ -96,13 +113,13 @@ def main() -> None:
         destino = OUT / f"{name}.wav"
         if destino.exists() and not forzar:
             continue
-        synth(text, destino)
+        synth(text, destino, rate)
         nuevos += 1
         print(f"  {name:10} <- \"{text}\"")
 
     if not nuevos:
         print("Nada que generar: estan todos. Usa --force para rehacerlos.")
-    print(f"\n{len(CLIPS)} clips ({VOZ}) en {OUT}/")
+    print(f"\n{len(CLIPS)} clips ({VOZ}, velocidad {rate}) en {OUT}/")
 
 
 if __name__ == "__main__":

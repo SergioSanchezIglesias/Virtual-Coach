@@ -146,6 +146,20 @@ CUÁNDO exacto. Resuelve la latencia de la voz: una frase de ~1.5 s no vale como
 gatillo pero sí como aviso previo. Los lifts dicen "Suelta"; el gas no lleva voz
 (el pitido basta). Solo en frenadas/lifts, nunca al acelerar.
 
+**La voz se genera un 15 % más lenta que la que sale de fábrica** (`RATE` en
+`gen_voces.py`). Probado en pista: a velocidad normal cuesta entenderla con el
+ruido del coche encima. No es gratis — la frase más larga pasa de 1.55 s a
+1.79 s — pero el coste medido es pequeño (ver abajo).
+
+**Ya hay solapamiento entre frases, y no es un fallo.** Medido ANTES de tocar la
+velocidad: en la curva del 92 % de Hockenheim la frase necesita 99 m de
+antelación y solo hay 63 m de hueco (**-36 m**); en Winton, **-64 m**. Se
+sostiene porque el motor de audio SUMA los sonidos en vez de cortarlos. Con la
+voz más lenta pasa a -39 m y -72 m: **3 y 8 metros peor**, nada. Lo vigila
+`test_el_solape_entre_frases_sigue_acotado`, que salta si crece de verdad. Si
+algún día estorba, las palancas son acortar la cuenta atrás o la propia frase —
+no volver a acelerar la voz.
+
 **La voz es clips pregenerados, no TTS en vivo.** `gen_voces.py` los crea con
 **voces neuronales de Microsoft** (edge-tts, es-ES-AlvaroNeural — casi humana),
 decodificadas a WAV con miniaudio (sin ffmpeg) y con el silencio de relleno

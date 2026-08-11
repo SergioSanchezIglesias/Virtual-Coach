@@ -159,6 +159,57 @@ def test_la_voz_se_puede_atenuar():
     assert pico_baja == pytest.approx(pico_alta * 0.5, rel=1e-3)
 
 
+def test_la_frase_de_voz_no_se_alarga_sin_control(circuito):
+    """La voz se genero un 15 % mas lenta porque costaba entenderla rodando.
+
+    Pero una voz mas lenta dura mas, y la frase tiene que caber ANTES de la
+    curva: voz + cuenta atras + antelacion. Medido tras el cambio, la frase mas
+    larga pasa de 1.55 s a 1.79 s. Si alguien la ralentiza mas de la cuenta,
+    la frase invade la curva anterior y el aviso deja de servir.
+    """
+    from conftest import referencia
+
+    coach = Coach(referencia(circuito), FakeAudio(), coach_cfg(voice=True))
+    duraciones = [e["_voice_dur"] for e in coach.events if e.get("_voice_dur")]
+
+    assert duraciones, "no se genero ninguna frase"
+    assert max(duraciones) < 2.5, (
+        f"la frase mas larga dura {max(duraciones):.2f} s: a este paso no cabe "
+        "antes de la curva"
+    )
+
+
+def test_el_solape_entre_frases_sigue_acotado(circuito):
+    """Ya hay curvas donde la frase arranca antes de pasar la anterior.
+
+    No es nuevo ni es un fallo: medido antes de tocar la velocidad de la voz,
+    Hockenheim ya iba a -36 m y Winton a -64 m. Se sostiene porque el motor de
+    audio SUMA los sonidos en vez de cortarlos. Lo que este test impide es que
+    ese solape crezca sin que nadie se entere.
+    """
+    from conftest import referencia
+
+    ref = referencia(circuito)
+    coach = Coach(ref, FakeAudio(), coach_cfg(voice=True, countdown=3,
+                                              countdown_interval=0.5))
+    eventos = sorted(coach.events, key=lambda e: e["pos"])
+    largo = ref["track_length_m"]
+
+    peor = 0.0
+    for i, ev in enumerate(eventos):
+        if not ev.get("_voice_dur"):
+            continue
+        v = ev.get("speed_ms", 50.0)
+        necesita = (0.35 + 3 * 0.5 + ev["_voice_dur"] + 0.30) * v
+        hueco = ((ev["pos"] - eventos[i - 1]["pos"]) % 1.0) * largo
+        peor = min(peor, hueco - necesita)
+
+    assert peor > -110.0, (
+        f"la frase invade {abs(peor):.0f} m la curva anterior: o la voz se ha "
+        "alargado demasiado, o hay que acortar la cuenta atras"
+    )
+
+
 def test_por_defecto_la_voz_va_por_debajo_del_tono():
     """El default tiene que corregir lo que se oyo en pista, no repetirlo."""
     ref = {
