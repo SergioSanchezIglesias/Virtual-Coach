@@ -321,7 +321,11 @@ análisis post-vuelta) se comería el desfase.
   110 tests pasaron a la primera, que es exactamente para lo que está la red
 - `.gitignore` excluye los CSV crudos; los JSON de referencia sí se versionan.
   **Excepción**: `tests/data/*.csv` sí van al repo (son los fixtures)
-- `pytest` es dependencia solo de desarrollo; el runtime no la necesita
+- Dependencias en `requirements.txt` (rodar) y `requirements-dev.txt` (tests,
+  `.exe`, regenerar voces). Van separadas a propósito: nada de lo de desarrollo
+  viaja en el ejecutable. Montar el entorno:
+
+      pip install -r requirements.txt -r requirements-dev.txt
 
 ## Empaquetado (.exe)
 
@@ -332,12 +336,24 @@ misma como `VirtualCoach.exe coach ...` en vez de `python coach.py`, porque en u
 coach.py con `sys._MEIPASS`). Es `--onedir` (carpeta portable), no `--onefile`,
 para que esas re-invocaciones no re-extraigan el bundle. En Windows:
 
-    pip install pyinstaller
+    pip install -r requirements.txt -r requirements-dev.txt
     pyinstaller VirtualCoach.spec
     # -> dist\VirtualCoach\VirtualCoach.exe  (carpeta portable, sin Python)
 
+**PyInstaller empaqueta lo que hay INSTALADO, no lo que importa el código.** Si
+falta una dependencia en la máquina que construye, el `.exe` sale igual y
+revienta al abrirlo. Pasó con `customtkinter`: la receta lo recogía
+correctamente, pero no estaba instalado en Windows, así que no había nada que
+recoger. Si tocas un `import`, mira si esa línea también hace falta.
+
+Si el `.exe` no abre, **mira `VirtualCoach-error.log` junto al ejecutable**. Se
+construye con `console=False` (es una GUI, no queremos ventana negra detrás), y
+el precio es que un fallo de arranque no enseña nada: la app simplemente no
+abre. Por eso `app.py` escribe ahí el traceback y lo enseña en una ventana.
+
 Validado en Mac: construye, empaqueta `voces/`, y el binario corre el coach con
-audio y voz encontrando los clips del bundle. En Windows falta estrenarlo.
+audio y voz encontrando los clips del bundle. **En Windows ya arranca la GUI
+nueva** (rama `feat/gui-customtkinter`).
 
 ## Siguiente paso
 
