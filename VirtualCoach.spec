@@ -18,12 +18,18 @@ from PyInstaller.utils.hooks import collect_all
 # sounddevice arrastra el DLL de PortAudio; collect_all se asegura de incluirlo.
 sd_datas, sd_binaries, sd_hidden = collect_all("sounddevice")
 
+# customtkinter NO es solo codigo: lleva temas (.json), fuentes e iconos en su
+# carpeta assets/. PyInstaller no recoge datos por su cuenta, asi que sin esto
+# el .exe arranca y revienta al pintar la primera ventana.
+ctk_datas, ctk_binaries, ctk_hidden = collect_all("customtkinter")
+
 a = Analysis(
     ["app.py"],
     pathex=[],
-    binaries=sd_binaries,
-    datas=[("voces", "voces")] + sd_datas,   # los clips de voz viajan dentro
-    hiddenimports=["irsdk"] + sd_hidden,      # pyirsdk se importa tarde, hay que forzarlo
+    binaries=sd_binaries + ctk_binaries,
+    # los clips de voz viajan dentro
+    datas=[("voces", "voces")] + sd_datas + ctk_datas,
+    hiddenimports=["irsdk"] + sd_hidden + ctk_hidden,  # pyirsdk se importa tarde, hay que forzarlo
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
