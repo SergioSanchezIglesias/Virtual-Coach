@@ -131,6 +131,50 @@ def test_los_ticks_siguen_siendo_cortos_y_bajitos():
 
 
 # ---------------------------------------------------------------------------
+# Volumen de los pitidos
+# ---------------------------------------------------------------------------
+
+
+def test_por_defecto_el_pitido_suena_como_el_dia_de_la_carrera():
+    """El 0.35 es el volumen con el que se corrio y se quedo segundo.
+
+    Que ahora sea ajustable no puede cambiar lo que oye quien no toca nada:
+    el defecto es el afinado validado, no un numero nuevo.
+    """
+    coach, _ = coach_con_audio()
+    for tipo, tono in coach.tones.items():
+        assert np.abs(tono).max() == pytest.approx(0.35, abs=0.01), f"{tipo} cambio de volumen"
+
+
+def test_el_volumen_de_los_pitidos_se_puede_ajustar():
+    """Los cuatro tonos escalan JUNTOS con --volume.
+
+    Juntos importa: sus alturas relativas son lo que te deja distinguir freno
+    de gas sin pensar. Si uno escalara y otro no, subir el volumen borraria esa
+    diferencia justo cuando mas se necesita (con ruido de motor encima).
+    """
+    normal, _ = coach_con_audio(volume=0.35)
+    fuerte, _ = coach_con_audio(volume=0.70)
+
+    for tipo in normal.tones:
+        pico_n = np.abs(normal.tones[tipo]).max()
+        pico_f = np.abs(fuerte.tones[tipo]).max()
+        assert pico_f == pytest.approx(pico_n * 2, rel=1e-3), f"{tipo} no escalo"
+
+
+def test_subir_el_pitido_no_lo_deja_saturado():
+    """El motor de audio SUMA los sonidos (voz + pitido + tick a la vez).
+
+    Con el tope del ajuste, un pitido solo ya rozaria el 1.0 y cualquier suma
+    clipa. El limite existe para que el aviso siga siendo un tono limpio y no
+    un chasquido.
+    """
+    coach, _ = coach_con_audio(volume=1.0)
+    for tipo, tono in coach.tones.items():
+        assert np.abs(tono).max() <= 1.0, f"{tipo} se sale de rango"
+
+
+# ---------------------------------------------------------------------------
 # Volumen de la voz
 # ---------------------------------------------------------------------------
 

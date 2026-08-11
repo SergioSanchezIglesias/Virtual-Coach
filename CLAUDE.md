@@ -20,15 +20,15 @@ Trabajamos en español.
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas | 57 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas | 110 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
 funcionó en pista real. La cuenta atrás quedó afinada al oído en
 `--countdown 3 --countdown-interval 0.5`.
 
-Pendiente: estrenar `gui.py` en Windows (en el Mac la ventana abre vacía por
-el Tk 8.5 viejo; ver Entorno).
+Pendiente: estrenar `gui.py` en Windows. En el Mac ya se ve (migrado a Python
+3.11 de Homebrew con Tk 8.6; ver Entorno).
 
 ## Arquitectura
 
@@ -98,6 +98,16 @@ clips vengan saturados**: medidos, sus picos van de 0.295 a 0.561, comparables a
 es otra: el oído integra la sonoridad en unos 200 ms y el pitido dura 90, así que
 se percibe más bajo de lo que mide. Por eso **no hay que normalizar por pico**
 (empeoraría): se atenúa la voz y se afina al oído.
+
+**Los cuatro pitidos escalan JUNTOS con `--volume`** (por defecto 0.35, el
+afinado que corrió la carrera). Antes el volumen del tono estaba fijo en
+`make_tone` y no había forma de subirlo sin tocar código, mientras que la voz y
+los ticks sí eran ajustables — una asimetría que no respondía a ninguna
+decisión, solo a que nadie lo había necesitado. Escalan juntos a propósito: sus
+alturas relativas son lo que deja distinguir freno de gas sin pensar, y si uno
+subiera más que otro se borraría esa diferencia justo con el motor rugiendo. Lo
+vigilan tres tests, y **el defecto sigue siendo 0.35**: quien no toca nada oye
+exactamente lo mismo que el día del podio.
 
 **El motor de audio es un MEZCLADOR**: suma los sonidos activos en vez de que
 cada uno corte al anterior. Así la voz de preparación y el pitido del punto
@@ -267,7 +277,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 57 tests, ~2.5 s
+    .venv/bin/python -m pytest tests/ -q      # 110 tests, ~13 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
@@ -302,13 +312,20 @@ análisis post-vuelta) se comería el desfase.
 
 - Desarrollo en **Mac**; iRacing está en una **máquina Windows aparte**
 - `pyirsdk` es solo Windows y solo lo toca `IRacingSource`
-- Venv en `.venv/`, creado con `--copies`. Python 3.9 de las Command Line
-  Tools con **Tk 8.5**: `gui.py` abre vacía en el Mac por un bug viejo de ese
-  Tk (los widgets no se pintan). En Windows (Tk 8.6) no ocurre. Migrar a un
-  Python de Homebrew lo arreglaría y sigue pendiente
+- Venv en `.venv/`, creado con `--copies` sobre el **Python 3.11 de Homebrew**
+  (`/opt/homebrew/bin/python3.11`) con **Tk 8.6.18** (`brew install
+  python-tk@3.11`). Antes era el Python 3.9 de las Command Line Tools, cuyo
+  **Tk 8.5 dejaba `gui.py` en blanco en el Mac** (los widgets no se pintaban):
+  se desarrollaba la ventana a ciegas. Ya no. El salto arrastró **pandas 2.3 →
+  3.0 y numpy 2.0 → 2.4** (versiones mayores) y **no movió ni un aviso**: los
+  110 tests pasaron a la primera, que es exactamente para lo que está la red
 - `.gitignore` excluye los CSV crudos; los JSON de referencia sí se versionan.
   **Excepción**: `tests/data/*.csv` sí van al repo (son los fixtures)
-- `pytest` es dependencia solo de desarrollo; el runtime no la necesita
+- Dependencias en `requirements.txt` (rodar) y `requirements-dev.txt` (tests,
+  `.exe`, regenerar voces). Van separadas a propósito: nada de lo de desarrollo
+  viaja en el ejecutable. Montar el entorno:
+
+      pip install -r requirements.txt -r requirements-dev.txt
 
 ## Empaquetado (.exe)
 
@@ -319,20 +336,41 @@ misma como `VirtualCoach.exe coach ...` en vez de `python coach.py`, porque en u
 coach.py con `sys._MEIPASS`). Es `--onedir` (carpeta portable), no `--onefile`,
 para que esas re-invocaciones no re-extraigan el bundle. En Windows:
 
-    pip install pyinstaller
+    pip install -r requirements.txt -r requirements-dev.txt
     pyinstaller VirtualCoach.spec
     # -> dist\VirtualCoach\VirtualCoach.exe  (carpeta portable, sin Python)
 
+**PyInstaller empaqueta lo que hay INSTALADO, no lo que importa el código.** Si
+falta una dependencia en la máquina que construye, el `.exe` sale igual y
+revienta al abrirlo. Pasó con `customtkinter`: la receta lo recogía
+correctamente, pero no estaba instalado en Windows, así que no había nada que
+recoger. Si tocas un `import`, mira si esa línea también hace falta.
+
+Si el `.exe` no abre, **mira `VirtualCoach-error.log` junto al ejecutable**. Se
+construye con `console=False` (es una GUI, no queremos ventana negra detrás), y
+el precio es que un fallo de arranque no enseña nada: la app simplemente no
+abre. Por eso `app.py` escribe ahí el traceback y lo enseña en una ventana.
+
 Validado en Mac: construye, empaqueta `voces/`, y el binario corre el coach con
-audio y voz encontrando los clips del bundle. En Windows falta estrenarlo.
+audio y voz encontrando los clips del bundle. **En Windows ya arranca la GUI
+nueva** (rama `feat/gui-customtkinter`).
 
 ## Siguiente paso
 
 **Validado en carrera real: Sergio quedó 2º.** La app está madura.
 
 Hecho tras el podio (en `main`, con la red de tests puesta antes de tocar nada):
-ticks ascendentes, `--voice-volume`, y `tests/` con 57 tests. **Falta probar los
+ticks ascendentes, `--voice-volume`, y `tests/` con 110 tests. **Falta probar los
 ticks nuevos en pista** y afinar `--voice-volume` al oído.
+
+En marcha: **rediseño de la GUI**. Hay mockup en Pencil con tres estados (sin
+referencia / listo / en pista): steppers `[−] valor [+]` para lo que hoy solo se
+toca por CLI (`--lead`, `--countdown`, `--countdown-interval`, `--voice-volume`,
+y en un bloque "ajuste fino" plegado `--margin`, `--speed-tol`, `--review-top`),
+y color como lenguaje del dominio (verde gas, rojo freno, morado gestión, ámbar
+voz), el mismo en los avisos y en el registro. **El "modo prueba" (replay) sale
+de la ventana**; sigue en el CLI. Primer paso ya hecho: la migración de Python
+de arriba, sin la cual se seguiría diseñando a ciegas.
 
 En rama aparte, pendientes de implementar y probar:
 

@@ -186,19 +186,21 @@ class Coach:
 
         console = isinstance(engine, ConsoleEngine)
         self.tones = {
-            "brake": "FRENA" if console else make_tone(cfg.brake_freq, cfg.beep_ms),
+            "brake": "FRENA"
+            if console
+            else make_tone(cfg.brake_freq, cfg.beep_ms, cfg.volume),
             "throttle": "GAS  "
             if console
-            else make_tone(cfg.throttle_freq, cfg.beep_ms),
+            else make_tone(cfg.throttle_freq, cfg.beep_ms, cfg.volume),
             # Lift = levantar sin frenar. Tono propio, entre el grave del freno
             # y el agudo del gas, para que no se confunda con ninguno.
             "lift": "SUELTA"
             if console
-            else make_tone(cfg.lift_freq, cfg.beep_ms),
+            else make_tone(cfg.lift_freq, cfg.beep_ms, cfg.volume),
             # Manage = zona de gestion (gas parcial). Tono propio, mas grave.
             "manage": "MEDIO GAS"
             if console
-            else make_tone(cfg.manage_freq, cfg.beep_ms),
+            else make_tone(cfg.manage_freq, cfg.beep_ms, cfg.volume),
         }
 
         # --- Cuenta atras: una ESCALA ASCENDENTE que remata en el pitido -----
@@ -485,6 +487,14 @@ def main():
         type=float,
         default=0.25,
         help="segundos entre ticks de la cuenta atras",
+    )
+    ap.add_argument(
+        "--volume",
+        type=float,
+        default=0.35,
+        help="volumen de los pitidos. El 0.35 es el afinado que corrio la "
+             "carrera; los cuatro tonos escalan juntos para no perder la "
+             "diferencia entre freno, gas, suelta y gestion",
     )
     ap.add_argument("--count-ms", type=int, default=45)
     ap.add_argument("--count-volume", type=float, default=0.20)
