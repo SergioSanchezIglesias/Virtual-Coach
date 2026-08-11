@@ -90,6 +90,7 @@ def coach_cfg(**overrides) -> SimpleNamespace:
         skip_mismatch=False,
         countdown=3,
         countdown_interval=0.5,
+        volume=0.35,
         count_ms=45,
         count_volume=0.20,
         count_freq=330.0,
