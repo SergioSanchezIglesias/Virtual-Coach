@@ -160,6 +160,33 @@ def test_sin_countdown_no_suena_ningun_tick(circuito):
     assert "  ." not in avisos
 
 
+def test_la_antelacion_de_la_voz_no_se_comprime_en_meta():
+    """Un aviso cuya antelacion cruza la linea de meta suena ANTES de cruzarla.
+
+    La curva 1 de Hockenheim esta a 167 m de meta y su voz necesita ~3.7 s de
+    antelacion (frase + cuenta atras + colchon): a 220 km/h la frase arranca
+    unos 60 m ANTES de la linea. Con el rearme en meta (el diseno viejo) la
+    voz no podia sonar hasta cruzar y salia comprimida contra la linea, con
+    los ticks sonando encima. El rearme por evento la deja donde toca.
+
+    Y una sola vez por aproximacion: comprimida era malo, doble seria peor.
+    """
+    avisos = rodar("hockenheim", vueltas=3, voice=True)
+    voz_t1 = [a for a in avisos if a["aviso"] == "[voz] Frena, 40%, 4a"]
+
+    # Tres vueltas de replay = cuatro aproximaciones a la curva 1 (la del
+    # arranque y una por cada paso por meta, incluida la del final del buffer).
+    assert len(voz_t1) == 4, f"la voz de la curva 1 sono {len(voz_t1)} veces"
+
+    # Salvo la primera (el replay YA arranca dentro de su ventana), todas
+    # tienen que sonar antes de la linea, no comprimidas tras ella.
+    for v in voz_t1[1:]:
+        assert v["pos"] > 0.9, (
+            f"la voz de la curva 1 sono en {v['pos']:.4f}: comprimida tras "
+            "meta en vez de anticiparse antes de la linea"
+        )
+
+
 def test_el_aviso_llega_antes_del_punto(circuito):
     """El aviso tiene que ADELANTARSE al evento, nunca sonar encima ni tarde.
 
@@ -369,15 +396,30 @@ def rodar_con_engine(circuito: str, engine, **overrides) -> list[dict]:
     return [a for a in engine.avisos if a["giro"] == 1]
 
 
-def test_el_aviso_compensa_el_retraso_de_la_tarjeta_de_sonido(circuito):
-    """En el PC de juego el sonido sale 183 ms tarde y nadie lo descontaba.
+def test_la_latencia_declarada_no_mueve_los_avisos(circuito):
+    """La cifra que declara la tarjeta NO se descuenta sola de la antelacion.
 
-    Con --lead 0.35 y ese retraso, la antelacion REAL era de 0.167 s: la
-    mitad de la pedida. A 220 km/h son 10 m en vez de 21. El coach medía la
-    latencia, la imprimia por pantalla... y no la usaba para nada.
+    Se descontaba, y el A/B en pista (Indianapolis) demostro que era un error:
+    los 182.9 ms que declara el PC de juego son la SUGERENCIA del modo de alta
+    latencia de PortAudio, no una medida del retraso real, y descontarlos
+    adelantaba todos los avisos respecto al tacto validado en carrera. Solo se
+    descuenta lo que el usuario pase por --audio-latency, medido de verdad.
     """
     sin = rodar_con_engine(circuito, GrabadorEngine(), countdown=0)
     con = rodar_con_engine(circuito, EngineConRetraso(), countdown=0)
+
+    assert [(a["aviso"], a["pos"]) for a in sin] == \
+           [(a["aviso"], a["pos"]) for a in con], (
+        "la latencia declarada por el motor movio los avisos: eso se retiro "
+        "tras el A/B de Indianapolis, no lo resucites sin validarlo en pista"
+    )
+
+
+def test_la_latencia_forzada_si_adelanta_el_aviso(circuito):
+    """--audio-latency con un retraso MEDIDO si compensa: adelanta el aviso."""
+    sin = rodar_con_engine(circuito, GrabadorEngine(), countdown=0)
+    con = rodar_con_engine(circuito, GrabadorEngine(),
+                           countdown=0, audio_latency=200.0)
 
     assert len(sin) == len(con)
     for a, b in zip(sin, con):
@@ -386,22 +428,13 @@ def test_el_aviso_compensa_el_retraso_de_la_tarjeta_de_sonido(circuito):
 
 
 def test_la_compensacion_equivale_a_pedir_mas_antelacion(circuito):
-    """Compensar 200 ms tiene que dar lo mismo que pedir 0.2 s mas de lead."""
-    con_retraso = rodar_con_engine(circuito, EngineConRetraso(),
-                                   countdown=0, lead=0.35)
+    """Compensar 200 ms medidos tiene que dar lo mismo que pedir 0.2 s mas."""
+    compensada = rodar_con_engine(circuito, GrabadorEngine(),
+                                  countdown=0, lead=0.35, audio_latency=200.0)
     mas_lead = rodar_con_engine(circuito, GrabadorEngine(),
                                 countdown=0, lead=0.55)
 
-    assert [a["pos"] for a in con_retraso] == [a["pos"] for a in mas_lead]
-
-
-def test_se_puede_forzar_la_latencia_a_mano(circuito):
-    """Si la medida del sistema miente, tiene que poder corregirse."""
-    medida = rodar_con_engine(circuito, EngineConRetraso(), countdown=0)
-    forzada = rodar_con_engine(circuito, GrabadorEngine(),
-                               countdown=0, audio_latency=200.0)
-
-    assert [a["pos"] for a in medida] == [a["pos"] for a in forzada]
+    assert [a["pos"] for a in compensada] == [a["pos"] for a in mas_lead]
 
 
 def test_sin_retraso_todo_suena_donde_siempre(circuito):

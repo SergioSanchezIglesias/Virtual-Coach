@@ -157,6 +157,11 @@ class Coach:
         self.engine = engine
         self.cfg = cfg
         self.fired: set[tuple[int, int]] = set()
+        # Eventos que el coche ya dejo atras en esta vuelta. Cada uno se rearma
+        # cuando vuelve a quedar POR DELANTE (media vuelta despues de pasarlo),
+        # no en meta: asi un aviso cuya antelacion cruza la linea puede sonar
+        # ANTES de cruzarla, con su antelacion completa.
+        self._behind: set[int] = set()
         self.last_pos = 0.0
 
         # --- Analisis post-vuelta -------------------------------------------
@@ -169,20 +174,18 @@ class Coach:
         self.training_cue: tuple[float, str] | None = None
         # --- El retraso de la tarjeta de sonido ------------------------------
         #
-        # Entre que el coach pide un pitido y el altavoz lo suelta pasa un
-        # tiempo, y en Windows no es despreciable: 183 ms medidos en el PC de
-        # juego (en el Mac son unos pocos). Ese retraso se estaba MIDIENDO e
-        # IMPRIMIENDO por pantalla desde el primer dia... y no se usaba.
+        # Hubo una temporada en que la cifra que declara el sistema (183 ms en
+        # el PC de juego) se descontaba SOLA de la antelacion. Sonaba razonable
+        # y resulto ser mentira: esa cifra es la SUGERENCIA del modo de alta
+        # latencia de PortAudio, no una medida del retraso real. Probado A/B en
+        # pista (Indianapolis): compensarla adelantaba los avisos respecto al
+        # tacto validado en carrera; sin compensar, el timing vuelve a cuadrar.
         #
-        # Con --lead 0.35 y 183 ms de retraso, la antelacion real era de 0.167 s:
-        # justo la mitad de la pedida. A 220 km/h, 10 metros en vez de 21.
-        #
-        # Se suma al lead para que el sonido LLEGUE cuando toca, no para que
-        # salga cuando toca. Si la medida del sistema miente, --audio-latency
-        # la sustituye.
+        # Asi que por defecto NO se compensa nada. --audio-latency queda para
+        # quien haya MEDIDO su retraso de verdad (grabando pantalla y altavoz,
+        # por ejemplo): ese numero si merece descontarse.
         forzada = getattr(cfg, "audio_latency", None)
-        medida = getattr(engine, "latency_ms", 0.0) or 0.0
-        self.audio_latency_s = (forzada if forzada is not None else medida) / 1000.0
+        self.audio_latency_s = (forzada or 0.0) / 1000.0
 
         console = isinstance(engine, ConsoleEngine)
         self.tones = {
@@ -349,9 +352,13 @@ class Coach:
         return delta * self.track_length
 
     def on_frame(self, f) -> None:
-        # Vuelta nueva: se rearman todos los avisos y se cierra el analisis.
+        # Vuelta nueva: se cierra el analisis. Los avisos NO se rearman aqui:
+        # cada evento se rearma por su cuenta al volver a quedar por delante
+        # (ver _behind). Rearmar en meta comprimia contra la linea los avisos
+        # de los primeros eventos de la vuelta: la voz de la curva 1 de
+        # Hockenheim, disenada para arrancar 3.75 s antes del punto, no podia
+        # sonar hasta cruzar y salia con 2.7 s, con los ticks encima.
         if f.lap_pos < self.last_pos - 0.5:
-            self.fired.clear()
             self._close_lap()
         self.last_pos = f.lap_pos
 
@@ -370,7 +377,13 @@ class Coach:
         for i, ev in enumerate(self.events):
             gap = self.gap_to(ev["pos"], f.lap_pos)
             if gap < 0:
+                self._behind.add(i)
                 continue
+            if i in self._behind:
+                # El evento acaba de volver a quedar por delante (el coche lo
+                # paso hace media vuelta): sus avisos se rearman AQUI.
+                self._behind.discard(i)
+                self.fired = {fk for fk in self.fired if fk[0] != i}
             ttc = gap / max(f.speed_ms, 1.0)
 
             # Solo las frenadas llevan cuenta atras. El aviso de gas es un
@@ -387,6 +400,12 @@ class Coach:
                     if ttc <= voice_lead:
                         self.fired.add((i, -1))
                         self.engine.play(ev["_voice"])
+                        # En modo consola la propia voz ya se imprime; con
+                        # audio real se deja constancia aqui para que el
+                        # registro de la GUI ensene que la frase ha sonado.
+                        if self.cfg.verbose and not self._console:
+                            print(f"{f.t:7.2f}s  voz      @ {ev['pos'] * 100:6.2f}%  "
+                                  f"preparando {ev['type']}", flush=True)
 
             # Se recorre de k mas alto (el tick mas temprano) a k = 0, que es
             # el aviso de verdad.
@@ -415,15 +434,20 @@ class Coach:
                     flag = f"  [!] {(f.speed_ms - ref_v) * 3.6:+.0f} km/h vs referencia"
                     if self.cfg.skip_mismatch:
                         print(
-                            f"      (omitido {ev['type']} @ {ev['pos'] * 100:.2f}%){flag}"
+                            f"      (omitido {ev['type']} @ {ev['pos'] * 100:.2f}%){flag}",
+                            flush=True,
                         )
                         break
 
                 self.engine.play(self.tones[ev["type"]])
                 if self.cfg.verbose:
+                    # flush: cuando la GUI lee esta salida por un pipe no hay
+                    # terminal que fuerce el volcado por lineas, y sin esto el
+                    # registro se queda en blanco hasta llenar el buffer.
                     print(
                         f"{f.t:7.2f}s  {ev['type']:<8} @ {ev['pos'] * 100:6.2f}%  "
-                        f"aviso {gap:5.1f} m antes  v={f.speed_ms * 3.6:3.0f} km/h{flag}"
+                        f"aviso {gap:5.1f} m antes  v={f.speed_ms * 3.6:3.0f} km/h{flag}",
+                        flush=True,
                     )
                 break
 
@@ -460,10 +484,11 @@ def main():
         "--audio-latency",
         type=float,
         default=None,
-        help="milisegundos que tarda la tarjeta en soltar el sonido. Por "
-             "defecto se usa el valor que declara el sistema y se DESCUENTA de "
-             "la antelacion, para que el pitido llegue cuando toca. Ponlo a "
-             "mano solo si la medida del sistema miente (0 lo desactiva)",
+        help="milisegundos MEDIDOS de retraso de la tarjeta, a descontar de la "
+             "antelacion. Por defecto no se descuenta NADA: la cifra que "
+             "declara el sistema resulto ser una sugerencia inflada, no una "
+             "medida (comprobado A/B en pista), y descontarla adelantaba los "
+             "avisos. Usalo solo con un retraso medido de verdad",
     )
     ap.add_argument(
         "--speed-tol",
@@ -565,14 +590,15 @@ def main():
 
     coach = Coach(reference, engine, cfg)
 
-    # Que se vea lo que de verdad va a pasar. Sin esto, la antelacion que se
-    # imprime es la PEDIDA, no la que llega al oido: en el PC de juego el
-    # sonido sale 183 ms tarde y eso se comia la mitad del aviso.
+    # Solo si el usuario paso un retraso MEDIDO con --audio-latency: que se
+    # vea que se esta descontando. (La cifra que declara el sistema se imprime
+    # arriba a titulo informativo, pero ya no se desconta sola: resulto ser
+    # una sugerencia del modo alta latencia, no una medida.)
     if coach.audio_latency_s > 0:
         print(f"Compensando {coach.audio_latency_s * 1000:.0f} ms de retraso de "
               f"la tarjeta: se pide el pitido {coach.audio_latency_s:.3f} s "
               f"antes para que LLEGUE a tiempo")
-    print()
+    print(flush=True)
 
     try:
         with make_source(cfg.replay, cfg.replay_speed, cfg.laps) as src:
