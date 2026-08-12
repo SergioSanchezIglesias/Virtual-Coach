@@ -585,17 +585,25 @@ class CoachGUI:
     @staticmethod
     def _tag_for(msg: str) -> str:
         """Colorea por tipo de aviso. El orden importa: "MEDIO GAS" contiene
-        "GAS", y la voz dice "Frena" igual que el pitido de frenada."""
+        "GAS", la voz dice "Frena" igual que el pitido, y la linea "(omitido
+        brake...)" contiene el nombre del evento pero es un descarte.
+
+        Rodando de verdad el coach no imprime "FRENA"/"GAS" (eso es el modo
+        consola): imprime lineas verbose tipo "  86.17s  brake  @ ...". El
+        color se decide tambien por esa palabra, que es lo que de verdad
+        llega al registro con el audio puesto."""
         s = msg.strip()
-        if s.startswith("[voz]"):
+        if s.startswith("[voz]") or " voz " in s:
             return "voice"
-        if s.startswith("MEDIO GAS"):
+        if s.startswith("(omitido"):
+            return "faint"
+        if s.startswith("MEDIO GAS") or " manage " in s:
             return "manage"
-        if s.startswith("FRENA"):
+        if s.startswith("FRENA") or " brake " in s:
             return "brake"
-        if s.startswith("SUELTA"):
+        if s.startswith("SUELTA") or " lift " in s:
             return "lift"
-        if s.startswith("GAS"):
+        if s.startswith("GAS") or " throttle " in s:
             return "gas"
         if s in {".", ""} or s.startswith("."):
             return "faint"
