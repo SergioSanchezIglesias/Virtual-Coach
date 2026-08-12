@@ -21,11 +21,15 @@ SAMPLE_RATE = 60.0  # Hz. iRacing / Garage61 exportan a 60 Hz uniformes.
 # Todos ajustables por CLI: son EL parametro a afinar del proyecto.
 BRAKE_ON = 0.15    # el pedal supera esto -> puede ser una frenada
 BRAKE_OFF = 0.03   # por debajo de esto se considera pedal suelto (histeresis)
-BRAKE_MIN_PEAK = 0.30   # pico minimo de freno para contar como frenada. A 0.35
-                        # se perdia la curva 1 de Hockenheim (un toque de 0.34).
-                        # Hay hueco limpio: no hay picos reales entre 0.05 y 0.34,
-                        # asi que 0.30 la captura sin colar roces. Validar en otros
-                        # circuitos: si aparecen avisos fantasma, subirlo por CLI.
+BRAKE_MIN_PEAK = 0.20   # pico minimo de freno para contar como frenada. Empezo
+                        # en 0.35 y ha bajado dos veces, siempre con datos: a
+                        # 0.30 por la curva 1 de Hockenheim (0.34) y a 0.20 por
+                        # una curva REAL de Indianapolis que se quedaba muda
+                        # (pico 0.245 con 1.4 s de pedal: eso no es un roce).
+                        # El ruido medido en los tres circuitos no pasa de
+                        # 0.148, asi que 0.20 conserva margen. Y desde Indy los
+                        # descartes dudosos ya no son silenciosos: detect_events
+                        # los canta para que decida el piloto.
 BRAKE_MIN_DUR = 0.20    # segundos minimos por encima de BRAKE_OFF
 THROTTLE_ON = 0.20      # apertura de gas que cuenta como "vuelve a acelerar"
 MERGE_DIST = 40.0       # metros: eventos mas juntos que esto se fusionan
@@ -154,6 +158,9 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
                 full += 1
 
             zones.append({
+                # Si el gas no sube tras la suelta, el aviso de GAS no aplica
+                # y to_reference lo omite (una orden de acelerar donde la
+                # referencia no acelera seria informacion falsa).
                 "coasting": bool(coasting),
                 # Segundos que el ABS estuvo trabajando en esta frenada.
                 #
@@ -177,6 +184,15 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
                 "throttle_pos": float(pos[gas]),
                 "throttle_speed_ms": float(speed[gas]),
             })
+        elif duration >= cfg.brake_min_dur:
+            # Freno sostenido pero bajo el umbral de pico. Puede ser un roce
+            # largo... o una curva de verdad: en Indianapolis un 0.245 de
+            # 1.4 s era una frenada real que se estaba tirando en silencio.
+            # Aqui no se decide: se canta, y el piloto que conoce la vuelta
+            # dira si falta un aviso.
+            print(f"  [!] freno sostenido descartado @ {pos[i] * 100:.2f}% "
+                  f"(pico {peak:.2f}, {duration:.1f} s). Si ahi hay una curva "
+                  f"de verdad, baja --brake-min-peak", flush=True)
 
         i = end
 
@@ -348,11 +364,14 @@ def to_reference(zones: list[dict], lifts: list[dict],
             "abs_s": z["abs_s"],
             "min_speed_ms": round(z["min_speed_ms"], 2),
         })
-        events.append({
-            "type": "throttle",
-            "pos": round(z["throttle_pos"], 6),
-            "speed_ms": round(z["throttle_speed_ms"], 2),
-        })
+        # Zona de inercia (la referencia NO acelera tras soltar): sin aviso de
+        # gas. Ordenar "GAS" donde el piloto rapido va en banda seria mentira.
+        if not z.get("coasting"):
+            events.append({
+                "type": "throttle",
+                "pos": round(z["throttle_pos"], 6),
+                "speed_ms": round(z["throttle_speed_ms"], 2),
+            })
     for lift in lifts:
         events.append({
             "type": "lift",
@@ -425,6 +444,12 @@ def main():
 
     zones = detect_events(df, args.track_length, args)
     print_table(zones, args.track_length)
+
+    for z in zones:
+        if z.get("coasting"):
+            print(f"  [!] la referencia no acelera tras la suelta @ "
+                  f"{z['throttle_pos'] * 100:.2f}% (inercia): esa zona no "
+                  f"llevara aviso de GAS", flush=True)
 
     lifts = detect_lifts(df, args)
     if lifts:

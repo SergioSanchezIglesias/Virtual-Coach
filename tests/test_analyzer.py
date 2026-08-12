@@ -313,3 +313,79 @@ def test_zonas_de_gestion_solo_donde_toca(circuito_esperado, tiene_manage,
     ref = analizar(circuito_esperado, analyzer_cfg)
     manage = [e for e in ref["events"] if e["type"] == "manage"]
     assert bool(manage) == tiene_manage, f"zonas de gestion: {manage}"
+
+
+# ---------------------------------------------------------------------------
+# El umbral de freno y las zonas de inercia (lecciones de Indianapolis)
+# ---------------------------------------------------------------------------
+
+
+def _vuelta_sintetica(pico_freno: float, acelera_despues: bool = True):
+    """Una vuelta de laboratorio: recta, UNA frenada, y salida (o inercia).
+
+    600 muestras a 60 Hz. La frenada dura 1.4 s (84 muestras), calcada de la
+    curva de Indianapolis que motivo el umbral actual.
+    """
+    import pandas as pd
+
+    n = 600
+    df = pd.DataFrame({
+        "Speed": np.full(n, 50.0),
+        "LapDistPct": np.linspace(0.0, 0.99, n),
+        "Brake": np.zeros(n),
+        "Throttle": np.ones(n),
+        "Gear": np.full(n, 3, dtype=int),
+    })
+    df.loc[150:283, "Throttle"] = 0.0        # levanta antes y durante la frenada
+    df.loc[200:283, "Brake"] = pico_freno    # 84 muestras = 1.4 s de pedal
+    if not acelera_despues:
+        df.loc[284:400, "Throttle"] = 0.0    # inercia larga tras la suelta
+    return df
+
+
+def test_una_frenada_suave_como_la_de_indianapolis_avisa(analyzer_cfg):
+    """El umbral bajo a 0.20 por una curva REAL de Indy (pico 0.245, 1.4 s).
+
+    "Toda frenada real avisa, por suave que sea; el umbral solo filtra roces."
+    Con el umbral en 0.30 esa curva se quedaba muda, y el ruido medido en los
+    tres circuitos no pasa de 0.148: hay hueco de sobra para capturarla.
+    """
+    zones = a.detect_events(_vuelta_sintetica(0.245), 1000.0, analyzer_cfg)
+    assert len(zones) == 1, "la frenada suave se quedo muda"
+
+
+def test_un_freno_sostenido_bajo_el_umbral_se_canta(analyzer_cfg, capsys):
+    """Descartar en silencio ya no vale: en Indy se trago una curva real.
+
+    Un pico de 0.17 sostenido 1.4 s queda bajo el umbral (puede ser un roce
+    largo), pero el analyzer lo dice por pantalla: el piloto conoce la vuelta
+    y es quien puede decidir si ahi faltaba un aviso.
+    """
+    zones = a.detect_events(_vuelta_sintetica(0.17), 1000.0, analyzer_cfg)
+    assert zones == []
+
+    salida = capsys.readouterr().out
+    assert "descartado" in salida and "--brake-min-peak" in salida, (
+        "el descarte dudoso no se canto por pantalla"
+    )
+
+
+def test_una_zona_de_inercia_no_emite_aviso_de_gas(analyzer_cfg):
+    """Si la referencia NO acelera tras soltar, esa zona no lleva aviso de GAS.
+
+    detect_events ya calculaba esta validacion (coasting) pero nadie la usaba
+    y el aviso se emitia igual. Ordenar "GAS" donde el piloto rapido va en
+    banda es informacion falsa, la linea roja del proyecto.
+    """
+    analyzer_cfg.track_length = 1000.0
+
+    def tipos(pico, acelera):
+        zones = a.detect_events(_vuelta_sintetica(pico, acelera),
+                                1000.0, analyzer_cfg)
+        ref = a.to_reference(zones, [], [], analyzer_cfg)
+        return [e["type"] for e in ref["events"]]
+
+    assert tipos(0.8, acelera=True) == ["brake", "throttle"]
+    assert tipos(0.8, acelera=False) == ["brake"], (
+        "sono un GAS en una zona de inercia"
+    )
