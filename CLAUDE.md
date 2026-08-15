@@ -20,7 +20,7 @@ Trabajamos en español.
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas | 114 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba como fixture) | 116 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -169,6 +169,26 @@ Ahora `to_reference` lo omite y el analyzer avisa de la omisión al procesar.
 En Hockenheim, Winton e Indy no hay ninguna zona así (verificado): el caso es
 de circuito futuro. Lo vigila `test_una_zona_de_inercia_no_emite_aviso_de_gas`.
 
+**El freno ARRASTRADO no es inercia: la suelta es cuando el pedal llega a
+cero, no cuando baja de `BRAKE_OFF`.** Lección de Tsukuba (ago-2026, Ferrari
+296, referencia de Travis Newsome): en las tres curvas lentas (30 %, 58 %,
+88 %) el piloto baja el freno a 0.01-0.05 y lo deja apoyado 0.5-1.3 s mientras
+gira, y solo pisa gas al soltarlo del todo. Como el analyzer daba la frenada
+por terminada al cruzar 0.03, en 0.6 s no había gas → `coasting` → **3 de 5
+curvas sin aviso de GAS**, y era un aviso BUENO: medido desde la suelta real
+(freno ≤ `BRAKE_ZERO` = 0.005) el gas llega +0.03/+0.48/+0.07 s después, o sea
+que la regla "gas = suelta del freno" seguía siendo cierta, fallaba el umbral.
+Es una firma del PIE del piloto, no de su ritmo: no se arregla cambiando de
+referencia. El arreglo es quirúrgico a propósito: solo cuando `coasting` sale
+verdadero se avanza el punto de gas hasta el cero real y se reevalúa. Bajar
+`BRAKE_OFF` en general habría movido el gas de Winton 0.03-0.28 s (allí la
+suelta real va un pelín después del cruce) y tocado un golden validado en
+pista; así Hockenheim y Winton no se mueven ni un metro. Lo vigilan
+`test_el_freno_arrastrado_no_es_inercia` y
+`test_tsukuba_avisa_gas_en_las_cinco_frenadas` (con `tests/data/tsukuba.csv`
+como tercer fixture congelado; no entra en los golden porque no está validado
+en pista).
+
 **Los avisos se rearman POR EVENTO, media vuelta después de pasarlo — no
 todos juntos en meta.** Rearmar en meta comprimía contra la línea los avisos
 de los primeros eventos de la vuelta: la voz de la curva 1 de Hockenheim
@@ -308,7 +328,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 114 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 116 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
@@ -395,7 +415,7 @@ ticks ascendentes, `--voice-volume`, la GUI nueva **estrenada en pista**, y el
 paquete de ago-2026 tras el A/B de Indianápolis: la compensación de latencia
 revertida con datos, el umbral de freno a 0.20, el rearme por evento, el
 `coasting` aplicado y el registro de la GUI arreglado (flush + colores). La red
-va por 114 tests.
+va por 116 tests.
 
 Decisión cerrada (ago-2026): el ritmo de la cuenta atrás queda en **0.75**,
 el defecto de la GUI, que es con el que Sergio lleva rodando y el que

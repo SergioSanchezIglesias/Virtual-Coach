@@ -389,3 +389,53 @@ def test_una_zona_de_inercia_no_emite_aviso_de_gas(analyzer_cfg):
     assert tipos(0.8, acelera=False) == ["brake"], (
         "sono un GAS en una zona de inercia"
     )
+
+
+# ---------------------------------------------------------------------------
+# El freno arrastrado (leccion de Tsukuba)
+# ---------------------------------------------------------------------------
+
+
+def _vuelta_con_freno_arrastrado():
+    """Frenada fuerte, luego el pie se queda APOYADO (0.02) un segundo, y solo
+    al soltar del todo entra el gas. Calcada de las curvas lentas de Tsukuba.
+    """
+    df = _vuelta_sintetica(0.8, acelera_despues=False)
+    df.loc[284:343, "Brake"] = 0.02      # 60 muestras = 1 s de pedal apoyado
+    df.loc[344:, "Throttle"] = 1.0       # gas al soltar de verdad
+    return df
+
+
+def test_el_freno_arrastrado_no_es_inercia(analyzer_cfg):
+    """En Tsukuba la referencia baja el freno a 0.01-0.05 y lo arrastra ~1 s
+    antes de soltarlo del todo; el gas entra en la suelta REAL, no al bajar de
+    BRAKE_OFF. Tomar el cruce de 0.03 como suelta dejaba 3 de 5 curvas sin GAS
+    por "inercia": un aviso bueno silenciado.
+    """
+    zones = a.detect_events(_vuelta_con_freno_arrastrado(), 1000.0, analyzer_cfg)
+    assert len(zones) == 1
+    z = zones[0]
+    assert not z["coasting"], "el freno arrastrado se tomo por inercia"
+    # La suelta real es la muestra 344; el punto de gas cae ahi, no en la 284.
+    assert abs(z["throttle_pos"] - 344 / 600 * 0.99) < 6 / 600, z["throttle_pos"]
+
+
+def test_tsukuba_avisa_gas_en_las_cinco_frenadas(analyzer_cfg):
+    """La vuelta real: 5 frenadas, y en TODAS la referencia vuelve a acelerar.
+
+    Medido: desde la suelta real (freno a cero) el gas llega +0.03/+0.48/+0.07 s
+    en las tres curvas que antes se marcaban como inercia. Y no se toca ni un
+    metro de Hockenheim/Winton, donde el pie no se queda apoyado (los golden
+    de esos dos circuitos son la prueba).
+    """
+    from conftest import DATA
+
+    df = a.load_lap(str(DATA / "tsukuba.csv"))
+    analyzer_cfg.track_length = a.track_length_from_speed(df)
+    zones = a.detect_events(df, analyzer_cfg.track_length, analyzer_cfg)
+    assert len(zones) == 5
+    assert [z["coasting"] for z in zones] == [False] * 5, (
+        [round(z["throttle_pos"] * 100, 2) for z in zones]
+    )
+    ref = a.to_reference(zones, [], [], analyzer_cfg)
+    assert sum(e["type"] == "throttle" for e in ref["events"]) == 5

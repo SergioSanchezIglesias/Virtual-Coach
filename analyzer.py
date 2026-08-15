@@ -21,6 +21,10 @@ SAMPLE_RATE = 60.0  # Hz. iRacing / Garage61 exportan a 60 Hz uniformes.
 # Todos ajustables por CLI: son EL parametro a afinar del proyecto.
 BRAKE_ON = 0.15    # el pedal supera esto -> puede ser una frenada
 BRAKE_OFF = 0.03   # por debajo de esto se considera pedal suelto (histeresis)
+BRAKE_ZERO = 0.005 # pedal DE VERDAD suelto. Distinto de BRAKE_OFF a proposito:
+                   # BRAKE_OFF es histeresis para cortar la frenada; este es
+                   # el cero fisico (el CSV trae ruido de coma flotante). Solo
+                   # se usa para el freno arrastrado (ver detect_events).
 BRAKE_MIN_PEAK = 0.20   # pico minimo de freno para contar como frenada. Empezo
                         # en 0.35 y ha bajado dos veces, siempre con datos: a
                         # 0.30 por la curva 1 de Hockenheim (0.34) y a 0.20 por
@@ -149,6 +153,26 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
             # transicion sino una fase de inercia. Ahi el aviso no aplica.
             window = gas + int(0.6 * SAMPLE_RATE)
             coasting = throttle[gas:min(window, n)].max() < cfg.throttle_on
+
+            # Freno ARRASTRADO (leccion de Tsukuba): hay pilotos que bajan el
+            # pedal a 0.01-0.05 y lo dejan apoyado ~1 s mientras giran, y solo
+            # pisan gas al soltarlo del todo. Para ellos, cruzar BRAKE_OFF no
+            # es la suelta: la suelta real es cuando el pedal llega a cero, y
+            # medido en Tsukuba el gas entra 0.03-0.48 s despues de ESE punto.
+            # Sin esto, 3 de 5 curvas se marcaban como inercia y se callaba un
+            # aviso bueno. Solo se aplica cuando el gas no ha entrado tras el
+            # cruce: en Hockenheim y Winton el pie no se queda apoyado y el
+            # punto de gas no se mueve ni un metro (lo vigilan sus golden).
+            if coasting:
+                real = gas
+                while (real < n - 1 and brake[real] > BRAKE_ZERO
+                       and throttle[real] < cfg.throttle_on):
+                    real += 1
+                if real > gas and brake[real] <= BRAKE_ZERO:
+                    gas = real
+                    window = gas + int(0.6 * SAMPLE_RATE)
+                    coasting = (throttle[gas:min(window, n)].max()
+                                < cfg.throttle_on)
 
             # Solo informativo: donde llega a gas pleno. No genera aviso
             # (varia entre 0.2 s y 1.1 s segun la curva: es un resultado de
