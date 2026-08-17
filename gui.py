@@ -29,6 +29,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from tkinter import filedialog
 
@@ -209,6 +210,7 @@ class CoachGUI:
         self.csv: Path | None = None         # CSV de referencia elegido
         self.reference: Path | None = None   # JSON que genera analyzer
         self.coach_proc: subprocess.Popen | None = None
+        self.overlay_proc: subprocess.Popen | None = None
 
         root.title("Virtual Coach")
         root.geometry("780x920")
@@ -394,6 +396,12 @@ class CoachGUI:
                                     MANAGE)
         self.t_training.pack(fill="x", padx=(26, 0))
 
+        self._section(parent, "QUE QUIERES VER")
+        self.t_overlay = ToggleRow(parent, "Clasificacion en pantalla",
+                                   "tabla por clases con el iRating estimado, encima del juego",
+                                   LIFT, value=True)
+        self.t_overlay.pack(fill="x", pady=(0, 16))
+
     def _build_actions(self, parent) -> None:
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", pady=(0, 16))
@@ -452,6 +460,7 @@ class CoachGUI:
                   self.s_speed_tol, self.s_review):
             s.set_enabled(on)
         self.t_voice.set_enabled(on)
+        self.t_overlay.set_enabled(on)
         self.t_training.set_enabled(on and self.t_voice.get())
         self.pick_btn.configure(state="normal" if on else "disabled")
 
@@ -548,6 +557,8 @@ class CoachGUI:
         # Su salida se lee en un hilo y se vuelca al registro con root.after,
         # que es la unica forma segura de tocar widgets desde otro hilo en Tk.
         threading.Thread(target=self._pump_output, daemon=True).start()
+        if self.t_overlay.get():
+            self._start_overlay()
 
         self.start_btn.configure(state="disabled", text="Rodando…",
                                  fg_color=SURFACE, text_color=FAINT)
@@ -562,12 +573,36 @@ class CoachGUI:
             self.root.after(0, self.log, line.rstrip())
         self.root.after(0, self._coach_ended)
 
+    def _start_overlay(self) -> None:
+        """El overlay va como proceso aparte, igual que el coach.
+
+        Cada sesion se graba sola en sesiones/ (JSONL de fotos de la sesion):
+        es lo que permite reproducir una carrera en el Mac y afinar el overlay
+        sin el juego. Pesa poco (unas decenas de KB por minuto).
+        """
+        sesiones = HERE / "sesiones"
+        sesiones.mkdir(exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M")
+        cmd = _tool_cmd("overlay") + ["--record", str(sesiones / f"{stamp}.jsonl")]
+        self.overlay_proc = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        self.log("▦  Overlay de clasificacion en pantalla (Esc sobre el, o Parar, lo cierra).", "lift")
+
+    def _stop_overlay(self) -> None:
+        if self.overlay_proc is not None and self.overlay_proc.poll() is None:
+            self.overlay_proc.terminate()
+        self.overlay_proc = None
+
     def stop_coach(self) -> None:
+        self._stop_overlay()
         if self.coach_proc is not None and self.coach_proc.poll() is None:
             self.coach_proc.terminate()  # el SO libera el audio al morir el proceso
 
     def _coach_ended(self) -> None:
         self.coach_proc = None
+        self._stop_overlay()
         self.log("■  Coach detenido.", "dim")
         self.start_btn.configure(state="normal" if self.reference else "disabled",
                                  text="▶   Empezar", fg_color=ACCENT, text_color=BG)
@@ -624,6 +659,7 @@ class CoachGUI:
         # No dejar un coach huerfano sonando tras cerrar la ventana.
         if self.coach_proc is not None and self.coach_proc.poll() is None:
             self.coach_proc.terminate()
+        self._stop_overlay()
         self.root.destroy()
 
 

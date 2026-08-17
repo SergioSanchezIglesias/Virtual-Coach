@@ -17,10 +17,12 @@ Trabajamos en español.
 | `coach.py` | bucle, anticipación, audio y voz | validado en pista (Hockenheim, Winton, Indianápolis) |
 | `gui.py` | ventana para elegir referencia y lanzar el coach | estrenada en pista (ago-2026) |
 | `review.py` | análisis post-vuelta con el ABS: por qué has ido lento | estrenado en pista: el canal de ABS del PC llega y diagnostica |
+| `standings.py` | clasificación por clases, SoF e iRating ESTIMADO (lógica pura) | tests verdes; sin estrenar en pista |
+| `overlay.py` | tabla de clasificación encima del juego (ventana sin bordes) | corre con replay en el Mac; **sin estrenar en pista** |
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba como fixture) | 116 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba como fixture) | 128 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -44,6 +46,15 @@ el simulador, y lo que abarataría un port futuro a Le Mans Ultimate.
 
 `ReplaySource` no es un mock: el CSV de Garage61 es una grabación del mismo
 flujo, a la misma frecuencia y en las mismas unidades que produce iRacing.
+
+**Hay un SEGUNDO canal en `source.py`: la sesión** (`SessionSnapshot`, todos
+los coches a 2 Hz), para el overlay de clasificación. Mismo patrón: iRacing en
+vivo (`IRacingSessionSource`), grabación a JSONL (`SessionRecorder`) y replay
+(`ReplaySessionSource`). El CSV de Garage61 no sirve aquí (solo trae tu coche),
+por eso **la GUI graba cada sesión sola en `sesiones/`** (ignorado por git):
+esa grabación es el fixture con el que se afina el overlay en el Mac.
+`tests/data/demo_sesion.jsonl` es una carrera SINTÉTICA para arrancar; en
+cuanto haya una real grabada en el PC, sustituirla.
 
 ## Decisiones tomadas (no deshacer sin hablarlo)
 
@@ -299,6 +310,16 @@ correcciones. Es la garantía contra el coach cansino.
 distracción posible y además llega tarde: cuando lo oyes, ya te has pasado. El
 diagnóstico se cierra al cruzar meta, que es cuando el dato sigue fresco.
 
+**El iRating del overlay es una ESTIMACIÓN y la pantalla lo dice (`≈`).**
+iRacing no publica el iRating en vivo, solo al acabar la sesión; lo que
+enseñan todos los overlays es la fórmula reconstruida por la comunidad (tipo
+Elo con `BR1 = 1600/ln 2`, suma cero dentro de cada clase, el tapado gana más
+que el favorito). Es fiel pero es una predicción: presentarla como dato sería
+información falsa. Lo vigilan los tests de `test_standings.py` (suma cero,
+monotonía, favorito vs tapado). El overlay va como proceso aparte igual que el
+coach, con Tk puro (sin customtkinter) porque necesita `-transparentcolor`, e
+**iRacing tiene que ir en ventana sin bordes** para que se vea encima.
+
 **Los tests congelan lo que ganó la carrera, y por eso van SIEMPRE primero.**
 Antes de tocar nada del core se fotografía el comportamiento actual (`golden`) y
 solo entonces se cambia. Si se escriben después, se congela el comportamiento
@@ -328,7 +349,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 116 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 128 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un

@@ -11,6 +11,7 @@ enruta al modulo correcto. En desarrollo funciona igual: `python app.py coach ..
     app.py               -> abre la GUI
     app.py coach ...     -> ejecuta coach.main() con el resto de argumentos
     app.py analyzer ...  -> ejecuta analyzer.main() con el resto de argumentos
+    app.py overlay ...   -> ejecuta overlay.main() (clasificacion encima del juego)
 """
 import sys
 from pathlib import Path
@@ -71,6 +72,10 @@ def main() -> None:
         sys.argv = ["analyzer", *args[1:]]
         import analyzer
         analyzer.main()
+    elif args and args[0] == "overlay":
+        sys.argv = ["overlay", *args[1:]]
+        import overlay
+        overlay.main()
     else:
         # Solo la GUI: el coach y el analyzer corren como subproceso con su
         # salida enganchada al registro de la ventana, ahi ya se ve todo.

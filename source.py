@@ -18,8 +18,9 @@ sitio.
 
 from __future__ import annotations
 
+import json
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import numpy as np
 import pandas as pd
@@ -213,6 +214,271 @@ class IRacingSource(TelemetrySource):
             self.ir.shutdown()
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Segundo canal: la SESION (todos los coches), para el overlay de clasificacion
+# ---------------------------------------------------------------------------
+#
+# Frame es TU coche a 60 Hz. La clasificacion necesita otra cosa: una foto de
+# todos los coches unas pocas veces por segundo. Es un contrato distinto, con
+# sus propias fuentes, pero vive aqui por la misma regla de siempre: este es
+# el unico modulo que sabe de donde salen los datos. El overlay consume
+# SessionSnapshot y no sabe si detras hay iRacing o un fichero grabado.
+#
+# El CSV de Garage61 no sirve de fixture para esto (solo trae tu coche), asi
+# que la grabacion se hace con SessionRecorder en el PC de juego y se
+# reproduce en el Mac con ReplaySessionSource. Mismo patron que ReplaySource.
+
+
+@dataclass(frozen=True)
+class CarState:
+    """Un coche de la sesion en un instante."""
+
+    idx: int  # CarIdx del SDK
+    number: str
+    name: str
+    class_id: int
+    class_name: str
+    irating: int
+    class_pos: int  # 1-based; 0 = sin posicion todavia
+    pos: int  # posicion absoluta, 1-based; 0 = sin posicion
+    lap: int
+    lap_dist_pct: float
+    f2_time: float  # segundos detras del lider ABSOLUTO (CarIdxF2Time)
+    last_lap: float  # segundos; <= 0 = sin vuelta
+    best_lap: float
+    on_pit_road: bool
+    in_world: bool  # ha estado en pista en esta sesion
+    is_me: bool
+
+
+@dataclass(frozen=True)
+class SessionSnapshot:
+    """Foto de la sesion: que sesion es, cuanto queda, y todos los coches."""
+
+    t: float
+    session_type: str  # "Race", "Practice", "Qualify", "Lone Qualify"...
+    time_remain: float  # segundos; puede ser enorme si es "sin limite"
+    laps_total: int  # 0 = sin limite de vueltas
+    laps_done: int  # vueltas completadas por el lider
+    session_num: int
+    cars: tuple[CarState, ...]
+
+    def to_json(self) -> str:
+        d = asdict(self)
+        return json.dumps(d, ensure_ascii=False, separators=(",", ":"))
+
+    @classmethod
+    def from_json(cls, line: str) -> "SessionSnapshot":
+        d = json.loads(line)
+        cars = tuple(CarState(**c) for c in d.pop("cars"))
+        return cls(cars=cars, **d)
+
+    @property
+    def me(self) -> CarState | None:
+        for c in self.cars:
+            if c.is_me:
+                return c
+        return None
+
+
+class SessionSource:
+    """Interfaz comun del segundo canal. Se itera y suelta SessionSnapshots."""
+
+    def snapshots(self):
+        raise NotImplementedError
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+class SessionRecorder:
+    """Vuelca snapshots a un JSONL (uno por linea) para reproducirlos luego.
+
+    Es lo que convierte una carrera real en un fixture: se graba en el PC con
+    el juego abierto y se reproduce en el Mac tantas veces como haga falta.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self._fh = open(path, "w", encoding="utf-8")
+
+    def write(self, snap: SessionSnapshot) -> None:
+        self._fh.write(snap.to_json() + "\n")
+        self._fh.flush()
+
+    def close(self):
+        self._fh.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+class ReplaySessionSource(SessionSource):
+    """Reproduce un JSONL grabado con SessionRecorder respetando sus tiempos.
+
+    speed=1.0 tiempo real; speed=0 tan rapido como pueda (tests).
+    """
+
+    def __init__(self, path: str, speed: float = 1.0):
+        with open(path, encoding="utf-8") as fh:
+            self._snaps = [SessionSnapshot.from_json(l) for l in fh if l.strip()]
+        self.rate = speed
+
+    def snapshots(self):
+        if not self._snaps:
+            return
+        t0 = time.perf_counter()
+        base = self._snaps[0].t
+        for snap in self._snaps:
+            if self.rate > 0:
+                delay = t0 + (snap.t - base) / self.rate - time.perf_counter()
+                if delay > 0:
+                    time.sleep(delay)
+            yield snap
+
+
+class IRacingSessionSource(SessionSource):
+    """Fotos de la sesion leidas de la memoria compartida de iRacing.
+
+    Solo Windows. La lista de pilotos (DriverInfo) va en el YAML de sesion y
+    cambia poco: se relee solo cuando el SDK dice que ha cambiado. Las
+    posiciones, gaps y tiempos van en los arrays CarIdx*, que se leen en cada
+    foto.
+    """
+
+    PACE_CAR = "safety pcfr500s"
+
+    def __init__(self, hz: float = 2.0):
+        try:
+            import irsdk
+        except Exception as exc:
+            raise SystemExit(
+                "pyirsdk solo funciona en Windows con iRacing instalado.\n"
+                "Para desarrollar en Mac usa --replay con un JSONL grabado.\n"
+                f"({type(exc).__name__}: {exc})"
+            )
+        self.ir = irsdk.IRSDK()
+        self.interval = 1.0 / hz
+        if not self.ir.startup():
+            raise SystemExit(
+                "No se encuentra iRacing. Arranca el juego y entra en sesion."
+            )
+        self._drivers: dict[int, dict] = {}
+        self._drivers_version = None
+        self._my_idx = -1
+
+    def _refresh_drivers(self) -> None:
+        version = self.ir["SessionInfoUpdate"]
+        if version == self._drivers_version and self._drivers:
+            return
+        info = self.ir["DriverInfo"] or {}
+        self._my_idx = int(info.get("DriverCarIdx", -1))
+        self._drivers = {}
+        for d in info.get("Drivers", []):
+            if d.get("IsSpectator") or d.get("CarIsPaceCar"):
+                continue
+            self._drivers[int(d["CarIdx"])] = d
+        self._drivers_version = version
+
+    def _session_meta(self, num: int) -> tuple[str, int]:
+        sessions = (self.ir["SessionInfo"] or {}).get("Sessions", [])
+        for s in sessions:
+            if int(s.get("SessionNum", -1)) == num:
+                laps = s.get("SessionLaps", "unlimited")
+                try:
+                    laps_total = int(laps)
+                except (TypeError, ValueError):
+                    laps_total = 0
+                return str(s.get("SessionType", "?")), laps_total
+        return "?", 0
+
+    def _read(self, name, idx, default=0):
+        arr = self.ir[name]
+        try:
+            v = arr[idx]
+        except (TypeError, IndexError):
+            return default
+        return default if v is None else v
+
+    def snapshot(self, t: float) -> SessionSnapshot | None:
+        if not self.ir.is_connected:
+            return None
+        self.ir.freeze_var_buffer_latest()
+        try:
+            self._refresh_drivers()
+            num = int(self.ir["SessionNum"] or 0)
+            stype, laps_total = self._session_meta(num)
+            if laps_total >= 32767:
+                laps_total = 0
+            cars = []
+            leader_laps = 0
+            for idx, d in self._drivers.items():
+                surface = self._read("CarIdxTrackSurface", idx, -1)
+                lap = int(self._read("CarIdxLap", idx, -1))
+                car = CarState(
+                    idx=idx,
+                    number=str(d.get("CarNumber", "?")),
+                    name=str(d.get("UserName", "?")),
+                    class_id=int(d.get("CarClassID", 0)),
+                    class_name=str(d.get("CarClassShortName") or d.get("CarScreenNameShort") or ""),
+                    irating=int(d.get("IRating", 0)),
+                    class_pos=int(self._read("CarIdxClassPosition", idx)),
+                    pos=int(self._read("CarIdxPosition", idx)),
+                    lap=max(lap, 0),
+                    lap_dist_pct=float(self._read("CarIdxLapDistPct", idx, 0.0)),
+                    f2_time=float(self._read("CarIdxF2Time", idx, 0.0)),
+                    last_lap=float(self._read("CarIdxLastLapTime", idx, -1.0)),
+                    best_lap=float(self._read("CarIdxBestLapTime", idx, -1.0)),
+                    on_pit_road=bool(self._read("CarIdxOnPitRoad", idx, False)),
+                    in_world=surface != -1 or lap > 0,
+                    is_me=idx == self._my_idx,
+                )
+                cars.append(car)
+                if car.pos == 1:
+                    leader_laps = max(car.lap - 1, 0)
+            return SessionSnapshot(
+                t=t,
+                session_type=stype,
+                time_remain=float(self.ir["SessionTimeRemain"] or 0.0),
+                laps_total=laps_total,
+                laps_done=leader_laps,
+                session_num=num,
+                cars=tuple(cars),
+            )
+        finally:
+            self.ir.unfreeze_var_buffer_latest()
+
+    def snapshots(self):
+        t0 = time.perf_counter()
+        while True:
+            snap = self.snapshot(time.perf_counter() - t0)
+            if snap is not None:
+                yield snap
+            time.sleep(self.interval)
+
+    def close(self):
+        try:
+            self.ir.shutdown()
+        except Exception:
+            pass
+
+
+def make_session_source(replay: str | None, speed: float = 1.0) -> SessionSource:
+    """Fabrica del segundo canal: JSONL grabado si se pasa, iRacing en vivo si no."""
+    if replay:
+        return ReplaySessionSource(replay, speed=speed)
+    return IRacingSessionSource()
 
 
 def make_source(
