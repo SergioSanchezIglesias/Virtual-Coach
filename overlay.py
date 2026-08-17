@@ -17,13 +17,39 @@ hay pintura. Arrastra el panel con el raton; Esc lo cierra.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import font as tkfont
 
 import standings as st
 from source import SessionRecorder, SessionSnapshot, make_session_source
+
+# Donde se recuerda la posicion del panel entre sesiones. Va junto a las
+# grabaciones (sesiones/), que es la carpeta de datos que ya usa la GUI.
+POS_FILE = Path(__file__).resolve().parent / "sesiones" / "overlay_pos.json"
+
+
+def load_pos(path: Path = POS_FILE) -> tuple[int, int] | None:
+    """La ultima posicion guardada, o None si no hay (o esta corrupta)."""
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+        return int(d["x"]), int(d["y"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def save_pos(x: int, y: int, path: Path = POS_FILE) -> None:
+    """Se guarda al SOLTAR el raton tras arrastrar, no al cerrar: la GUI mata
+    el proceso con terminate() y un guardado al cierre nunca llegaria."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"x": int(x), "y": int(y)}), encoding="utf-8")
+    except OSError:
+        pass
+
 
 # Los mismos colores que la GUI (y que el boceto de Pencil), para que sea la
 # misma app se mire por donde se mire.
@@ -93,6 +119,7 @@ class Overlay:
         self._drag = None
         self.canvas.bind("<ButtonPress-1>", self._drag_start)
         self.canvas.bind("<B1-Motion>", self._drag_move)
+        self.canvas.bind("<ButtonRelease-1>", self._drag_end)
         root.bind("<Escape>", lambda e: root.destroy())
 
     # -- ventana ------------------------------------------------------------
@@ -113,6 +140,11 @@ class Overlay:
     def _drag_move(self, e):
         if self._drag:
             self.root.geometry(f"+{e.x_root - self._drag[0]}+{e.y_root - self._drag[1]}")
+
+    def _drag_end(self, e):
+        if self._drag:
+            self._drag = None
+            save_pos(self.root.winfo_x(), self.root.winfo_y())
 
     # -- datos --------------------------------------------------------------
 
@@ -365,14 +397,19 @@ def main() -> None:
     ap.add_argument("--top", type=int, default=3, help="primeros de cada clase que se ven")
     ap.add_argument("--around", type=int, default=2, help="coches alrededor de mi que se ven")
     ap.add_argument("--scale", type=float, default=1.0, help="tamano del panel")
-    ap.add_argument("--pos", default="28,28", help="esquina superior izquierda, x,y")
+    ap.add_argument("--pos", default=None,
+                    help="esquina superior izquierda, x,y. Si se omite, la ultima "
+                         "posicion donde se dejo arrastrado (o 28,28 la primera vez)")
     args = ap.parse_args()
 
     if args.record and args.replay:
         raise SystemExit("--record es para la sesion en vivo, no para un replay.")
 
     root = tk.Tk()
-    x, y = (int(v) for v in args.pos.split(","))
+    if args.pos:
+        x, y = (int(v) for v in args.pos.split(","))
+    else:
+        x, y = load_pos() or (28, 28)
     root.geometry(f"+{x}+{y}")
     ov = Overlay(root, args.top, args.around, args.scale)
 

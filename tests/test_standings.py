@@ -216,3 +216,21 @@ def test_los_coches_sin_irating_no_puntuan_ni_rompen():
     # Y una clase entera de IA no rompe nada.
     assert st.irating_changes([0, 0], [1, 2]) == [None, None]
     assert st.sof([0, 0]) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# La posicion del panel se recuerda entre sesiones
+# ---------------------------------------------------------------------------
+
+
+def test_la_posicion_del_overlay_se_recuerda(tmp_path):
+    """Cada vez que se abria, el panel volvia a la esquina: se guarda al soltar
+    el arrastre y se lee al arrancar. Un fichero roto o ausente = primera vez."""
+    import overlay as ov
+
+    f = tmp_path / "pos.json"
+    assert ov.load_pos(f) is None
+    ov.save_pos(640, 120, f)
+    assert ov.load_pos(f) == (640, 120)
+    f.write_text("{basura")
+    assert ov.load_pos(f) is None

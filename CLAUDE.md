@@ -22,7 +22,7 @@ Trabajamos en español.
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba como fixture) | 131 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba y VIR como fixtures) | 136 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -200,6 +200,33 @@ pista; así Hockenheim y Winton no se mueven ni un metro. Lo vigilan
 como tercer fixture congelado; no entra en los golden porque no está validado
 en pista).
 
+**El freno se normaliza al PICO de la propia vuelta; los umbrales son
+fracciones de lo que ese piloto pisa como mucho, no valores absolutos.**
+Lección de VIR (ago-2026, Yeonwoo Lee, AMG GT4, 2:22): su pedal llega a
+**0.376** en toda la vuelta, y las otras referencias a 1.00 (Hockenheim), 0.78
+(Winton) y 0.59 (Tsukuba). Es calibración/fuerza de SU pedal, no ritmo. Con
+`BRAKE_ON = 0.15` absoluto (el 40 % de su frenada máxima) se perdían **4
+frenadas reales de 13** (12.4, 15.0, 52.4 y 83.0 %) y la del 43.6 % sonaba
+13 m TARDE — la dirección que no queremos. Sergio lo notó como "ningún pitido
+funciona bien". Ahora `load_lap` divide `Brake` por su máximo (misma filosofía
+que la longitud: se mide de la vuelta, no se teclea) y guarda la escala en
+`df.attrs["brake_scale"]`; la única constante que sigue en unidades crudas es
+`BRAKE_ZERO` (ruido de lectura del pedal, no fuerza). Medido: Hockenheim no
+cambia nada; en Winton ninguna frenada se mueve, los gas van UNA muestra más
+tarde (0.3-1.4 m) y el `manage` +3.3 m, y el `peak` que dice la voz pasa a ser
+relativo al pedal del piloto ("frena, cien" en su frenada más fuerte, que es lo
+honesto). Se re-fotografiaron los dos golden de Winton por eso. Lo vigilan
+`test_la_escala_del_pedal_no_mueve_las_frenadas` (el mismo CSV con el freno
+×0.4 y ×0.7 da las mismas zonas al micrómetro) y
+`test_vir_detecta_las_trece_frenadas` (con `tests/data/vir.csv` como cuarto
+fixture). Lo que VIR también enseñó y queda **pendiente**: sus 4 "lifts" son
+falsos (la velocidad no baja en ninguno: 78→101, 140→140, 149→147, 95→101
+km/h; es gas parcial en salidas y eses), pero el lift validado de Winton
+tampoco pierde velocidad, así que una regla de "un lift frena el coche" tocaría
+un golden y hay que pensarla con más datos. Y este piloto rueda en inercia de
+verdad en 6 de 13 curvas (1-3.8 s sin gas tras soltar): ahí el coach calla el
+GAS, y eso es correcto.
+
 **Los avisos se rearman POR EVENTO, media vuelta después de pasarlo — no
 todos juntos en meta.** Rearmar en meta comprimía contra la línea los avisos
 de los primeros eventos de la vuelta: la voz de la curva 1 de Hockenheim
@@ -349,7 +376,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 131 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 136 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
@@ -367,7 +394,7 @@ fichero y comparar. Tres capas:
   aviso que no se distingue de otro no sirve, y eso no se ve leyendo el código.
 
 Los CSV de `tests/data/` son **copias congeladas** de las dos vueltas
-validadas, versionadas con una excepción en `.gitignore` (353 KB comprimidos).
+validadas (más Tsukuba y VIR como fixtures no validados en pista), versionadas con una excepción en `.gitignore` (353 KB comprimidos).
 Son copias a propósito: los CSV de la raíz los sobrescribes al exportar de
 Garage61, y un fixture que cambia bajo los pies no congela nada.
 
@@ -468,8 +495,11 @@ y el panel se ha compactado dos veces porque tapaba pista. Pasos que quedan:
    (`standings.irating_changes`) o cómo se cuentan los que puntúan
    (`in_world`, DNS, desconectados).
 3. Ajustes de la GUI que faltan para el overlay: exponer `--scale`, `--top`,
-   `--around` y la posición como ajustes (hoy solo por CLI; la GUI lanza los
-   defectos), y recordar la posición donde se dejó arrastrado.
+   `--around` como ajustes (hoy solo por CLI; la GUI lanza los defectos).
+   **La posición ya se recuerda** (ago-2026): se guarda en
+   `sesiones/overlay_pos.json` al SOLTAR el arrastre (no al cerrar: la GUI
+   mata el proceso con `terminate` y un guardado al cierre nunca llegaría) y
+   se lee al arrancar; `--pos` explícito sigue mandando.
 4. Fusionar a `main` y **reconstruir el `.exe` en Windows** (pendiente
    también por los cambios de ago-2026 en el coach). El spec no cambia:
    `overlay` entra por `app.py`.
