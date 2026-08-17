@@ -18,11 +18,11 @@ Trabajamos en español.
 | `gui.py` | ventana para elegir referencia y lanzar el coach | estrenada en pista (ago-2026) |
 | `review.py` | análisis post-vuelta con el ABS: por qué has ido lento | estrenado en pista: el canal de ABS del PC llega y diagnostica |
 | `standings.py` | clasificación por clases, SoF e iRating ESTIMADO (lógica pura) | estrenado en práctica; el gap es distancia en pista en vivo |
-| `overlay.py` | tabla de clasificación encima del juego (ventana sin bordes) | **estrenado en práctica** (ago-2026); falta validar en carrera online |
+| `overlay.py` | clasificación por clases + **relative**, encima del juego (dos paneles, un proceso) | clasificación **validada en carrera** (ago-2026); relative y orden en vivo sin estrenar |
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba y VIR como fixtures) | 136 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba y VIR como fixtures) | 146 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -347,6 +347,33 @@ monotonía, favorito vs tapado). El overlay va como proceso aparte igual que el
 coach, con Tk puro (sin customtkinter) porque necesita `-transparentcolor`, e
 **iRacing tiene que ir en ventana sin bordes** para que se vea encima.
 
+**En carrera la clasificación se ordena por la posición REAL en pista, no
+por la del SDK.** Sergio lo notó en su primera carrera con el overlay como
+"cierto delay hasta que se ajustan las posiciones": `CarIdxClassPosition`
+solo cambia en los puntos de cronometraje, así que entre dos un
+adelantamiento no se ve. Misma trampa que `CarIdxF2Time` con el gap, misma
+solución: `vuelta + LapDistPct` (`_race_key`), con el número del SDK de
+desempate. Y con **histéresis** (`HYST_LAP` = 0.002 vueltas, ~10 m): dos
+coches rueda a rueda se alternan por centímetros y a 2 Hz la tabla
+parpadearía, así que un intercambio menor que eso no se aplica hasta que se
+consolide (`build_standings(snap, prev)` con `ranks()` de la foto anterior;
+el `Feed` del overlay lo hilvana). Solo en carrera: en práctica/quali la
+posición del SDK es la de mejor vuelta y no envejece. Lo vigilan
+`test_en_carrera_manda_la_posicion_en_pista_no_la_del_sdk` y
+`test_dos_coches_pegados_no_bailan`.
+
+**El relative es distancia CIRCULAR en pista, de todas las clases, y la
+vuelta de diferencia se dice con el color, no con el orden.** El que me
+dobla a 2 s va "delante" aunque lleve una vuelta más; `laps_diff` (+1 me
+dobla → rojo, −1 le doblo → azul, misma vuelta → blanco, como el relative de
+iRacing) es lo que te dice si estás luchando por posición o solo cediendo
+paso. Los segundos salen con la mejor vuelta de la SESIÓN (aquí conviven
+clases). Va en el MISMO proceso que la clasificación (`--relative`, panel
+`RelativePanel` sobre el mismo `Feed`): una lectura del SDK, una grabación;
+la GUI relanza el proceso con la combinación de interruptores que haya. Cada
+panel recuerda su posición por separado (`overlay_pos.json` con una clave
+por vista; el formato viejo `{x,y}` sigue valiendo para la clasificación).
+
 **Los tests congelan lo que ganó la carrera, y por eso van SIEMPRE primero.**
 Antes de tocar nada del core se fotografía el comportamiento actual (`golden`) y
 solo entonces se cambia. Si se escriben después, se congela el comportamiento
@@ -376,7 +403,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 136 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 146 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
@@ -477,7 +504,17 @@ conducción. Contexto: Sergio corre GT4, GT3 y Porsche Cup (setup fijo en
 muchas series) y quiere meter LMP3/LMP2/Hypercar; iRacing ya va en ventana sin
 bordes.
 
-**Overlay: implementado y estrenado en práctica** (`overlay.py`,
+**Overlay: clasificación validada en carrera (ago-2026, "me encanta"); relative
+y estética nueva sin estrenar.** Tras la carrera Sergio pidió (1) un relative
+respecto a él, (2) el orden en vivo (ver decisiones) y (3) la estética de
+RaceLab/estilo tarjetas: cada clase en su tarjeta grafito con cabecera
+(chip de clase, coches, vueltas, tiempo, temperaturas, SoF), chip de
+licencia con color por letra (`LicString`, campo nuevo `CarState.license`
+con defecto para no romper JSONL viejos), iR en "4.3K", morado la mejor
+vuelta, "GAP"/"INT" como rótulos en la fila del líder (sin fila de
+cabeceras). Comprobado en el Mac con `--replay tests/data/demo_sesion.jsonl
+--relative`; **falta verlo en el PC** (fuentes Segoe/Consolas, licencias
+reales). (`overlay.py`,
 `standings.py`, segundo canal en `source.py`, toggle en la GUI, `app.py
 overlay`). **El interruptor de la GUI es VIVO e independiente del coach**
 (ago-2026): encenderlo arranca el overlay al momento sin necesitar CSV ni

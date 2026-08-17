@@ -127,15 +127,51 @@ def _track_pos(c: CarState) -> float:
 
 
 def _order_key(c: CarState):
-    # En carrera manda la posicion del SDK; si aun no hay (practica, o justo
-    # al cargar), ordena por vueltas y distancia, y al final por mejor vuelta.
+    # Fuera de carrera manda la posicion del SDK (en practica/quali es la
+    # de mejor vuelta y no envejece); si aun no hay, por vueltas y distancia,
+    # y al final por mejor vuelta.
     if c.class_pos > 0:
         return (0, c.class_pos)
     best = c.best_lap if c.best_lap > 0 else float("inf")
     return (1, -c.lap, -c.lap_dist_pct, best)
 
 
-def build_standings(snap: SessionSnapshot) -> list[ClassBlock]:
+def _race_key(c: CarState):
+    # EN CARRERA manda la pista. CarIdxClassPosition solo cambia en los
+    # puntos de cronometraje: entre dos, un adelantamiento tarda en verse
+    # (Sergio lo noto como "cierto delay"). Misma leccion que el gap. La
+    # posicion del SDK queda de desempate cuando dos coches van clavados.
+    return (-_track_pos(c), c.class_pos if c.class_pos > 0 else 10**6)
+
+
+# Rueda a rueda dos coches se alternan por centimetros y a 2 Hz la tabla
+# parpadearia: un intercambio menor que esto (en vueltas: ~10 m en 5 km) no
+# se aplica hasta que se consolide. Solo en carrera, que es donde se ordena
+# por pista.
+HYST_LAP = 0.002
+
+
+def _settle(cars: list[CarState], prev: dict[int, int]) -> None:
+    """Deshace los intercambios menores que HYST_LAP respecto al orden
+    anterior (idx -> puesto). Una pasada basta: a 2 Hz converge solo."""
+    for i in range(len(cars) - 1):
+        a, b = cars[i], cars[i + 1]
+        pa, pb = prev.get(a.idx), prev.get(b.idx)
+        if pa is None or pb is None or pb >= pa:
+            continue
+        if _track_pos(a) - _track_pos(b) < HYST_LAP:
+            cars[i], cars[i + 1] = b, a
+
+
+def ranks(blocks: list["ClassBlock"]) -> dict[int, int]:
+    """idx -> puesto en su clase, para pasarselo a la foto siguiente."""
+    return {r.car.idx: r.pos for b in blocks for r in b.rows}
+
+
+def build_standings(snap: SessionSnapshot,
+                    prev: dict[int, int] | None = None) -> list[ClassBlock]:
+    """La clasificacion por clases. `prev` es ranks() de la foto anterior:
+    con el, dos coches pegados no bailan (ver HYST_LAP)."""
     by_class: dict[int, list[CarState]] = {}
     for c in snap.cars:
         if _in_session(c):
@@ -147,8 +183,11 @@ def build_standings(snap: SessionSnapshot) -> list[ClassBlock]:
     session_lap = min(all_bests) if all_bests else FALLBACK_LAP_S
 
     blocks = []
+    race = snap.session_type == "Race"
     for cid, cars in by_class.items():
-        cars.sort(key=_order_key)
+        cars.sort(key=_race_key if race else _order_key)
+        if race and prev:
+            _settle(cars, prev)
         positions = list(range(1, len(cars) + 1))
         deltas = irating_changes([c.irating for c in cars], positions)
         bests = [c.best_lap for c in cars if c.best_lap > 0]
@@ -185,6 +224,63 @@ def build_standings(snap: SessionSnapshot) -> list[ClassBlock]:
     # Mi clase primero; el resto por fuerza (los prototipos arriba).
     blocks.sort(key=lambda b: (not b.is_mine, -b.sof))
     return blocks
+
+
+# ---------------------------------------------------------------------------
+# Relatives: quien tengo delante y detras EN PISTA
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RelRow:
+    car: CarState
+    rel_s: float  # segundos respecto a mi: + delante, - detras
+    laps_diff: int  # +1 va una vuelta por delante (me dobla), -1 le doblo yo
+    class_pos: int  # puesto en su clase (en vivo)
+
+    @property
+    def is_me(self) -> bool:
+        return self.car.is_me
+
+
+def build_relative(snap: SessionSnapshot, around: int = 3,
+                   blocks: list[ClassBlock] | None = None) -> list[RelRow]:
+    """Los `around` coches por delante y por detras de mi en PISTA, sean de la
+    clase que sean, con yo en medio. Vacio si no estoy en la sesion.
+
+    Es DISTANCIA circular sobre la vuelta: el que me dobla a 2 s esta "delante"
+    aunque vaya una vuelta mas; la vuelta de diferencia se dice aparte
+    (laps_diff). Los segundos salen con la mejor vuelta de la sesion (aqui
+    conviven clases: no hay una "vuelta de la clase" que valga para todos).
+    """
+    me = snap.me
+    if me is None or not me.in_world:
+        return []
+    bests = [c.best_lap for c in snap.cars if c.best_lap > 0]
+    lap_s = min(bests) if bests else FALLBACK_LAP_S
+    if blocks is None:
+        blocks = build_standings(snap)
+    pos = ranks(blocks)
+    my_d = _track_pos(me)
+    ahead: list[tuple[float, CarState]] = []
+    behind: list[tuple[float, CarState]] = []
+    for c in snap.cars:
+        if not c.in_world or c.is_me:
+            continue
+        rel = ((c.lap_dist_pct - me.lap_dist_pct + 0.5) % 1.0) - 0.5  # (-0.5, 0.5]
+        (ahead if rel > 0 else behind).append((rel, c))
+    ahead.sort(key=lambda t: t[0])
+    behind.sort(key=lambda t: -t[0])
+
+    def row(rel: float, c: CarState) -> RelRow:
+        laps = round((_track_pos(c) - my_d) - rel)
+        return RelRow(car=c, rel_s=rel * lap_s, laps_diff=int(laps),
+                      class_pos=pos.get(c.idx, 0))
+
+    rows = [row(rel, c) for rel, c in reversed(ahead[:around])]
+    rows.append(RelRow(car=me, rel_s=0.0, laps_diff=0, class_pos=pos.get(me.idx, 0)))
+    rows += [row(rel, c) for rel, c in behind[:around]]
+    return rows
 
 
 def visible_rows(block: ClassBlock, top: int = 3, around: int = 2) -> list[Row]:

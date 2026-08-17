@@ -251,6 +251,9 @@ class CarState:
     on_pit_road: bool
     in_world: bool  # ha estado en pista en esta sesion
     is_me: bool
+    # Con defecto: se anadio despues de grabar sesiones, y un JSONL viejo
+    # tiene que seguir cargando. "A 3.45" tal cual lo da el SDK (LicString).
+    license: str = ""
 
 
 @dataclass(frozen=True)
@@ -264,6 +267,9 @@ class SessionSnapshot:
     laps_done: int  # vueltas completadas por el lider
     session_num: int
     cars: tuple[CarState, ...]
+    # Con defecto por la misma razon que CarState.license. None = no se sabe.
+    air_temp: float | None = None  # grados C
+    track_temp: float | None = None
 
     def to_json(self) -> str:
         d = asdict(self)
@@ -415,6 +421,13 @@ class IRacingSessionSource(SessionSource):
             return default
         return default if v is None else v
 
+    def _scalar(self, name) -> float | None:
+        try:
+            v = self.ir[name]
+        except Exception:
+            return None
+        return None if v is None else float(v)
+
     def snapshot(self, t: float) -> SessionSnapshot | None:
         if not self.ir.is_connected:
             return None
@@ -450,6 +463,7 @@ class IRacingSessionSource(SessionSource):
                     on_pit_road=bool(self._read("CarIdxOnPitRoad", idx, False)),
                     in_world=surface != -1 or lap > 0,
                     is_me=idx == self._my_idx,
+                    license=str(d.get("LicString") or ""),
                 )
                 cars.append(car)
                 if car.pos == 1:
@@ -462,6 +476,8 @@ class IRacingSessionSource(SessionSource):
                 laps_done=leader_laps,
                 session_num=num,
                 cars=tuple(cars),
+                air_temp=self._scalar("AirTemp"),
+                track_temp=self._scalar("TrackTempCrew"),
             )
         finally:
             self.ir.unfreeze_var_buffer_latest()

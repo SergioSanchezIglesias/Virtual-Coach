@@ -234,14 +234,21 @@ class CoachGUI:
         self.t_voice.pack(fill="x", pady=(0, 16))
 
         self._section(parent, "QUE QUIERES VER")
-        # Interruptor VIVO: enciende y apaga el overlay al momento, sin
+        # Interruptores VIVOS: encienden y apagan los paneles al momento, sin
         # necesitar referencia ni pulsar Empezar. La clasificacion sirve
-        # igual en una carrera sin coach (o sin CSV de ese circuito).
+        # igual en una carrera sin coach (o sin CSV de ese circuito). Los dos
+        # paneles van en UN proceso (una lectura del SDK, una grabacion):
+        # tocar cualquiera de los dos lo relanza con la combinacion nueva.
         self.t_overlay = ToggleRow(parent, "Clasificacion en pantalla",
                                    "tabla por clases con el iRating estimado, encima del juego "
                                    "(va aparte del coach: enciende al momento)",
                                    LIFT, value=False, command=self._toggle_overlay)
-        self.t_overlay.pack(fill="x", pady=(0, 16))
+        self.t_overlay.pack(fill="x", pady=(0, 8))
+        self.t_relative = ToggleRow(parent, "Relative en pantalla",
+                                    "quien tienes delante y detras EN PISTA, de cualquier clase, "
+                                    "con los segundos a cada uno",
+                                    LIFT, value=False, command=self._toggle_overlay)
+        self.t_relative.pack(fill="x", pady=(0, 16))
 
     def _build_actions(self, parent) -> None:
         row = ctk.CTkFrame(parent, fg_color="transparent")
@@ -408,13 +415,16 @@ class CoachGUI:
         self.root.after(0, self._coach_ended)
 
     def _toggle_overlay(self) -> None:
-        if self.t_overlay.get():
-            self._start_overlay()
+        """Cualquiera de los dos interruptores: se relanza el proceso con los
+        paneles que esten encendidos (o se cierra si no queda ninguno)."""
+        want_st, want_rel = self.t_overlay.get(), self.t_relative.get()
+        self._stop_overlay()
+        if want_st or want_rel:
+            self._start_overlay(want_st, want_rel)
         else:
-            self._stop_overlay()
             self.log("▦  Overlay cerrado.", "dim")
 
-    def _start_overlay(self) -> None:
+    def _start_overlay(self, standings: bool, relative: bool) -> None:
         """El overlay va como proceso aparte, igual que el coach — e
         independiente de el: no necesita referencia ni que el coach ruede.
 
@@ -424,8 +434,12 @@ class CoachGUI:
         """
         sesiones = HERE / "sesiones"
         sesiones.mkdir(exist_ok=True)
-        stamp = time.strftime("%Y%m%d-%H%M")
+        stamp = time.strftime("%Y%m%d-%H%M%S")
         cmd = _tool_cmd("overlay") + ["--record", str(sesiones / f"{stamp}.jsonl")]
+        if not standings:
+            cmd.append("--no-standings")
+        if relative:
+            cmd.append("--relative")
         # Su salida va a un log junto a las grabaciones: si el overlay no
         # aparece, ahi esta el porque (con DEVNULL se moria en silencio).
         self._overlay_log = open(sesiones / "overlay.log", "a", encoding="utf-8")
@@ -433,7 +447,8 @@ class CoachGUI:
             cmd, stdout=self._overlay_log, stderr=subprocess.STDOUT,
             creationflags=CREATE_NO_WINDOW,
         )
-        self.log("▦  Overlay de clasificacion en pantalla (Esc sobre el, o el interruptor, lo cierra).", "lift")
+        que = " + ".join(n for n, on in (("clasificacion", standings), ("relative", relative)) if on)
+        self.log(f"▦  Overlay en pantalla: {que} (Esc sobre el, o los interruptores, lo cierran).", "lift")
         self.log(f"   graba en {sesiones / (stamp + '.jsonl')}; log en sesiones/overlay.log", "dim")
         self.root.after(3000, self._check_overlay)
 
@@ -448,6 +463,7 @@ class CoachGUI:
         # tiene que reflejarlo, si no quedaria encendido sin overlay detras.
         self._stop_overlay()
         self.t_overlay.var.set(False)
+        self.t_relative.var.set(False)
         if p.returncode == 0:
             self.log("▦  Overlay cerrado.", "dim")
         else:
