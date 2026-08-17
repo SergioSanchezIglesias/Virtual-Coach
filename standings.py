@@ -43,7 +43,7 @@ def sof(iratings: list[int]) -> float:
     flojos pesan mas de lo que parece. Los iRating desconocidos (0: coches de
     IA, pilotos sin licencia) no cuentan.
     """
-    known = [r for r in iratings if r > 0]
+    known = [r for r in iratings if r > IR_UNKNOWN]
     if not known:
         return 0.0
     n = len(known)
@@ -57,7 +57,7 @@ def irating_changes(iratings: list[int], positions: list[int]) -> list[float | N
     iRating desconocido (<= 0) no puntua ni resta a los demas: sale None.
     Sin esto, dos ceros en la misma clase (IA en practica) dividen por cero.
     """
-    known = [(i, r, p) for i, (r, p) in enumerate(zip(iratings, positions)) if r > 0]
+    known = [(i, r, p) for i, (r, p) in enumerate(zip(iratings, positions)) if r > IR_UNKNOWN]
     out: list[float | None] = [None] * len(iratings)
     n = len(known)
     if n < 2:
@@ -80,12 +80,21 @@ def irating_changes(iratings: list[int], positions: list[int]) -> list[float | N
 # ---------------------------------------------------------------------------
 
 
+# Sin ninguna vuelta cronometrada en la sesion no hay con que convertir metros
+# en segundos; se usa esto hasta que alguien marque una vuelta.
+FALLBACK_LAP_S = 100.0
+
+# iRacing da IRating 0 o 1 a la IA y a quien no puntua: eso no es un iRating.
+IR_UNKNOWN = 1
+
+
 @dataclass(frozen=True)
 class Row:
     car: CarState
     pos: int
-    gap: float  # al lider de la clase, s
-    interval: float  # al coche de delante en la clase, s
+    gap: float  # al lider de la clase, s (+ detras, - delante en pista)
+    interval: float  # al coche de delante en la lista, s
+    laps_down: int  # vueltas perdidas respecto al lider de la clase
     delta: float | None  # iRating estimado; None = sin iRating (IA)
     fastest: bool  # mejor vuelta de la clase
 
@@ -112,6 +121,11 @@ def _in_session(c: CarState) -> bool:
     return c.in_world
 
 
+def _track_pos(c: CarState) -> float:
+    """Posicion absoluta en pista, en vueltas (vuelta + fraccion)."""
+    return c.lap + max(0.0, min(1.0, c.lap_dist_pct))
+
+
 def _order_key(c: CarState):
     # En carrera manda la posicion del SDK; si aun no hay (practica, o justo
     # al cargar), ordena por vueltas y distancia, y al final por mejor vuelta.
@@ -128,6 +142,10 @@ def build_standings(snap: SessionSnapshot) -> list[ClassBlock]:
             by_class.setdefault(c.class_id, []).append(c)
 
     my_class = snap.me.class_id if snap.me else None
+    # Con que convertir distancia en segundos si una clase no tiene vuelta.
+    all_bests = [c.best_lap for c in snap.cars if c.best_lap > 0]
+    session_lap = min(all_bests) if all_bests else FALLBACK_LAP_S
+
     blocks = []
     for cid, cars in by_class.items():
         cars.sort(key=_order_key)
@@ -135,16 +153,27 @@ def build_standings(snap: SessionSnapshot) -> list[ClassBlock]:
         deltas = irating_changes([c.irating for c in cars], positions)
         bests = [c.best_lap for c in cars if c.best_lap > 0]
         fastest = min(bests) if bests else None
-        leader_f2 = cars[0].f2_time
+        lap_s = fastest if fastest else session_lap
+        # El gap es DISTANCIA EN PISTA en todo momento (vuelta + fraccion),
+        # pasada a segundos con la mejor vuelta de la clase. CarIdxF2Time no
+        # sirve: en carrera solo se actualiza en los puntos de control y en
+        # practica es un delta de mejor vuelta, no una distancia.
+        leader_d = _track_pos(cars[0])
         rows = []
-        prev_f2 = leader_f2
+        prev_d = leader_d
         for c, p, d in zip(cars, positions, deltas):
-            gap = c.f2_time - leader_f2
+            here = _track_pos(c)
+            behind = leader_d - here  # en vueltas; + = detras del lider
+            laps_down = int(behind) if behind >= 1.0 else 0
             rows.append(Row(
-                car=c, pos=p, gap=gap, interval=c.f2_time - prev_f2, delta=d,
+                car=c, pos=p,
+                gap=(behind - laps_down) * lap_s,
+                interval=(prev_d - here) * lap_s,
+                laps_down=laps_down,
+                delta=d,
                 fastest=fastest is not None and c.best_lap == fastest,
             ))
-            prev_f2 = c.f2_time
+            prev_d = here
         blocks.append(ClassBlock(
             class_id=cid,
             class_name=cars[0].class_name,
@@ -179,14 +208,17 @@ def fmt_lap(seconds: float) -> str:
     return f"{int(m)}:{s:06.3f}"
 
 
-def fmt_gap(seconds: float, leader: bool = False) -> str:
+def fmt_gap(seconds: float, leader: bool = False, laps_down: int = 0) -> str:
     if leader:
         return "—"
-    return f"+{seconds:.1f}"
+    if laps_down:
+        return f"+{laps_down} L"
+    sign = "+" if seconds >= 0 else "−"
+    return f"{sign}{abs(seconds):.1f}"
 
 
 def fmt_ir(ir: int) -> str:
-    if ir <= 0:
+    if ir <= IR_UNKNOWN:
         return "—"
     return f"{ir / 1000:.1f}K" if ir >= 1000 else str(ir)
 

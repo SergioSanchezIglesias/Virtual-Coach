@@ -242,7 +242,7 @@ class Overlay:
         c.create_rectangle(0, y, 3 * s, y + H_CLS * s, fill=color, outline="")
         cy = y + H_CLS * s / 2
         x = PAD * s
-        name = b.class_name or f"Clase {b.class_id}"
+        name = (b.class_name or f"Clase {b.class_id}")[:14]
         w = 8 * s + len(name) * 7.5 * s
         self._rrect(x, cy - 8 * s, x + w, cy + 8 * s, 3 * s, fill=color, outline="")
         self._text(x + w / 2, cy, name, 11, "bold", BG, anchor="center")
@@ -298,8 +298,11 @@ class Overlay:
         dcol = TEXT_FAINT if r.delta is None else (ACCENT if r.delta >= 0 else BRAKE)
         self._text(x1 - 6 * s, cy, st.fmt_delta(r.delta), 12, "bold", dcol, mono=True, anchor="e")
         (_, _, x1, _) = cols[4]
-        self._text(x1, cy, st.fmt_gap(r.gap, r.pos == 1), 13,
-                   fill=TEXT_FAINT if r.pos == 1 else TEXT, mono=True, anchor="e")
+        if car.on_pit_road:
+            self._text(x1, cy, "PIT", 12, "bold", VOICE, mono=True, anchor="e")
+        else:
+            self._text(x1, cy, st.fmt_gap(r.gap, r.pos == 1, r.laps_down), 13,
+                       fill=TEXT_FAINT if r.pos == 1 else TEXT, mono=True, anchor="e")
         (_, _, x1, _) = cols[5]
         self._text(x1, cy, "INT" if r.pos == 1 else st.fmt_gap(r.interval), 13,
                    fill=TEXT_FAINT if r.pos == 1 else TEXT_DIM, mono=True, anchor="e")
@@ -310,8 +313,6 @@ class Overlay:
         (_, _, x1, _) = cols[7]
         self._text(x1, cy, st.fmt_lap(car.best_lap), 13,
                    fill=MANAGE if r.fastest else TEXT_DIM, mono=True, anchor="e")
-        if car.on_pit_road:
-            self._text((W - PAD) * s, cy, "PIT", 9, "bold", VOICE, anchor="e")
 
     def _footer(self, y: float) -> None:
         s = self.s

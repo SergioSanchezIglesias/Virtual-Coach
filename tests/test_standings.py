@@ -81,25 +81,55 @@ def test_el_sof_de_un_campo_uniforme_es_su_irating():
 
 
 def test_los_bloques_salen_por_clase_y_ordenados():
+    # Vuelta de 100 s: cada 1 % de pista es 1 s. El gap es DISTANCIA EN
+    # PISTA (vuelta + fraccion), no CarIdxF2Time, que en carrera solo cambia
+    # en los puntos de control y en practica es un delta de mejor vuelta.
     snap = _snap([
-        _car(0, 92, "K. Estre", 1, 5100, 1, f2=0.0),
-        _car(1, 51, "A. Pier Guidi", 1, 4900, 2, f2=2.2),
-        _car(2, 4, "S. Sanchez", 1, 4300, 3, f2=6.6, is_me=True),
-        _car(3, 27, "J. Calado", 2, 3200, 1, f2=40.0),
-        _car(4, 71, "D. Muller", 2, 2900, 2, f2=43.1),
+        _car(0, 92, "K. Estre", 1, 5100, 1, lap=10, lap_dist_pct=0.500, best=100.0),
+        _car(1, 51, "A. Pier Guidi", 1, 4900, 2, lap=10, lap_dist_pct=0.478, best=101.0),
+        _car(2, 4, "S. Sanchez", 1, 4300, 3, lap=10, lap_dist_pct=0.434, best=101.5, is_me=True),
+        _car(3, 27, "J. Calado", 2, 3200, 1, lap=9, lap_dist_pct=0.900, best=110.0),
+        _car(4, 71, "D. Muller", 2, 2900, 2, lap=9, lap_dist_pct=0.869, best=111.0),
     ])
     bloques = st.build_standings(snap)
     assert [b.class_id for b in bloques] == [1, 2]
     gt3, gt4 = bloques
     assert [r.number for r in gt3.rows] == ["92", "51", "4"]
     assert gt3.rows[2].is_me
-    # El gap se mide al lider DE LA CLASE: Calado lidera GT4 aunque vaya 40 s
-    # detras del lider absoluto.
+    # El gap se mide al lider DE LA CLASE y con la mejor vuelta DE LA CLASE:
+    # Calado lidera GT4 aunque vaya media vuelta detras del lider absoluto.
     assert gt4.rows[0].gap == pytest.approx(0.0)
-    assert gt4.rows[1].gap == pytest.approx(3.1)
-    assert gt4.rows[1].interval == pytest.approx(3.1)
+    assert gt4.rows[1].gap == pytest.approx(0.031 * 110.0)
+    assert gt4.rows[1].interval == pytest.approx(0.031 * 110.0)
+    assert gt3.rows[1].gap == pytest.approx(2.2)
+    assert gt3.rows[2].gap == pytest.approx(6.6)
     assert gt3.rows[2].interval == pytest.approx(4.4)
     assert gt3.sof == pytest.approx(st.sof([5100, 4900, 4300]))
+
+
+def test_el_gap_es_en_vivo_y_puede_ser_negativo_o_de_vueltas():
+    # En practica el orden es por mejor vuelta, asi que el segundo puede ir
+    # FISICAMENTE por delante del primero: gap negativo, no un cero falso.
+    snap = _snap([
+        _car(0, 1, "A", 1, 4000, 1, lap=5, lap_dist_pct=0.10, best=100.0),
+        _car(1, 2, "B", 1, 4000, 2, lap=5, lap_dist_pct=0.30, best=101.0),
+        _car(2, 3, "C", 1, 4000, 3, lap=3, lap_dist_pct=0.50, best=102.0),
+    ], session_type="Practice")
+    (blk,) = st.build_standings(snap)
+    assert blk.rows[1].gap == pytest.approx(-20.0)
+    assert st.fmt_gap(blk.rows[1].gap) == "−20.0"
+    # C va 1.6 vueltas detras: doblado, se dice en vueltas.
+    assert blk.rows[2].laps_down == 1
+    assert st.fmt_gap(blk.rows[2].gap, laps_down=blk.rows[2].laps_down) == "+1 L"
+
+
+def test_sin_ninguna_vuelta_cronometrada_el_gap_no_revienta():
+    snap = _snap([
+        _car(0, 1, "A", 1, 4000, 1, lap=1, lap_dist_pct=0.20, best=-1.0, last=-1.0),
+        _car(1, 2, "B", 1, 4000, 2, lap=1, lap_dist_pct=0.10, best=-1.0, last=-1.0),
+    ])
+    (blk,) = st.build_standings(snap)
+    assert blk.rows[1].gap == pytest.approx(0.1 * st.FALLBACK_LAP_S)
 
 
 def test_mi_clase_va_primero():
