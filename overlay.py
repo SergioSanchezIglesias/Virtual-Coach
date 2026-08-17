@@ -122,10 +122,22 @@ class Overlay:
     def tick(self) -> None:
         with self.lock:
             snap, status = self.snap, self.status
-        if snap is not None:
-            self.draw(snap)
-        else:
-            self.draw_waiting(status)
+        try:
+            if snap is not None:
+                self.draw(snap)
+            else:
+                self.draw_waiting(status)
+        except Exception as exc:
+            # Un fallo pintando NO puede matar el bucle: se canta una vez y
+            # se sigue intentando con la foto siguiente.
+            import traceback
+
+            key = f"{type(exc).__name__}: {exc}"
+            if key != getattr(self, "_last_draw_error", None):
+                self._last_draw_error = key
+                print(f"[overlay] error pintando: {key}", flush=True)
+                traceback.print_exc()
+            self.draw_waiting(f"Error pintando: {key}"[:80])
         self.root.after(250, self.tick)
 
     def draw_waiting(self, status: str) -> None:
@@ -212,7 +224,7 @@ class Overlay:
             row = next((r for r in mine.rows if r.is_me), None)
             xr = (W - PAD) * s
             if row:
-                col = ACCENT if row.delta >= 0 else BRAKE
+                col = TEXT_DIM if row.delta is None else (ACCENT if row.delta >= 0 else BRAKE)
                 txt = st.fmt_delta(row.delta)
                 w = 16 * s + len(txt) * 8 * s
                 self._rrect(xr - w, cy - 10 * s, xr, cy + 10 * s, 4 * s,
@@ -283,8 +295,8 @@ class Overlay:
         (_, x0, x1, _) = cols[3]
         self._rrect(x0, cy - 10 * s, x1, cy + 10 * s, 4 * s, fill=SURFACE_2, outline="")
         self._text(x0 + 6 * s, cy, st.fmt_ir(car.irating), 12, fill=TEXT_DIM, mono=True)
-        self._text(x1 - 6 * s, cy, st.fmt_delta(r.delta), 12, "bold",
-                   ACCENT if r.delta >= 0 else BRAKE, mono=True, anchor="e")
+        dcol = TEXT_FAINT if r.delta is None else (ACCENT if r.delta >= 0 else BRAKE)
+        self._text(x1 - 6 * s, cy, st.fmt_delta(r.delta), 12, "bold", dcol, mono=True, anchor="e")
         (_, _, x1, _) = cols[4]
         self._text(x1, cy, st.fmt_gap(r.gap, r.pos == 1), 13,
                    fill=TEXT_FAINT if r.pos == 1 else TEXT, mono=True, anchor="e")

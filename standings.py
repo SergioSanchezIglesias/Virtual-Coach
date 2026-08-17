@@ -40,27 +40,38 @@ def sof(iratings: list[int]) -> float:
     """Strength of Field: la media "logaritmica" que usa iRacing.
 
     Queda por debajo de la media aritmetica cuando el campo es desigual: los
-    flojos pesan mas de lo que parece.
+    flojos pesan mas de lo que parece. Los iRating desconocidos (0: coches de
+    IA, pilotos sin licencia) no cuentan.
     """
-    if not iratings:
+    known = [r for r in iratings if r > 0]
+    if not known:
         return 0.0
-    n = len(iratings)
-    return -BR1 * math.log(sum(math.exp(-r / BR1) for r in iratings) / n)
+    n = len(known)
+    return -BR1 * math.log(sum(math.exp(-r / BR1) for r in known) / n)
 
 
-def irating_changes(iratings: list[int], positions: list[int]) -> list[float]:
+def irating_changes(iratings: list[int], positions: list[int]) -> list[float | None]:
     """Cambio estimado de iRating de cada piloto (misma clase).
 
-    positions es 1-based. Devuelve una lista alineada con iratings.
+    positions es 1-based. Devuelve una lista alineada con iratings. Un
+    iRating desconocido (<= 0) no puntua ni resta a los demas: sale None.
+    Sin esto, dos ceros en la misma clase (IA en practica) dividen por cero.
     """
-    n = len(iratings)
+    known = [(i, r, p) for i, (r, p) in enumerate(zip(iratings, positions)) if r > 0]
+    out: list[float | None] = [None] * len(iratings)
+    n = len(known)
     if n < 2:
-        return [0.0] * n
-    out = []
-    for i, (r, p) in enumerate(zip(iratings, positions)):
-        expected = sum(_win_prob(r, o) for j, o in enumerate(iratings) if j != i)
+        for i, _, _ in known:
+            out[i] = 0.0
+        return out
+    # Las posiciones se recomprimen entre los que puntuan.
+    order = sorted(known, key=lambda k: k[2])
+    rank = {i: k + 1 for k, (i, _, _) in enumerate(order)}
+    for i, r, _ in known:
+        p = rank[i]
+        expected = sum(_win_prob(r, o) for j, o, _ in known if j != i)
         fudge = ((n - 1) / 2.0 - (p - 1)) / 100.0
-        out.append(((n - p) - expected - fudge) * 200.0 / n)
+        out[i] = ((n - p) - expected - fudge) * 200.0 / n
     return out
 
 
@@ -75,7 +86,7 @@ class Row:
     pos: int
     gap: float  # al lider de la clase, s
     interval: float  # al coche de delante en la clase, s
-    delta: float  # iRating estimado
+    delta: float | None  # iRating estimado; None = sin iRating (IA)
     fastest: bool  # mejor vuelta de la clase
 
     @property
@@ -175,9 +186,13 @@ def fmt_gap(seconds: float, leader: bool = False) -> str:
 
 
 def fmt_ir(ir: int) -> str:
+    if ir <= 0:
+        return "—"
     return f"{ir / 1000:.1f}K" if ir >= 1000 else str(ir)
 
 
-def fmt_delta(d: float) -> str:
+def fmt_delta(d: float | None) -> str:
+    if d is None:
+        return "—"
     sign = "+" if d >= 0 else "−"
     return f"≈{sign}{abs(round(d))}"

@@ -171,3 +171,18 @@ def test_grabar_y_reproducir_es_simetrico(tmp_path):
     assert len(vueltos) == 2
     assert vueltos[0] == snap
     assert vueltos[1].t == 2.0
+
+
+def test_los_coches_sin_irating_no_puntuan_ni_rompen():
+    # Practica con IA: pilotos con IRating 0. Dos ceros en la misma clase
+    # dividian por cero y tumbaban el overlay en el PC (ago-2026). Los
+    # desconocidos salen como None y los demas se calculan entre ellos.
+    cambios = st.irating_changes([4000, 0, 3000, 0], [1, 2, 3, 4])
+    assert cambios[1] is None and cambios[3] is None
+    assert cambios[0] > 0 > cambios[2]
+    assert abs(cambios[0] + cambios[2]) < 1e-6
+    assert st.sof([4000, 0, 3000, 0]) == pytest.approx(st.sof([4000, 3000]))
+    assert st.fmt_delta(None) == "—" and st.fmt_ir(0) == "—"
+    # Y una clase entera de IA no rompe nada.
+    assert st.irating_changes([0, 0], [1, 2]) == [None, None]
+    assert st.sof([0, 0]) == 0.0
