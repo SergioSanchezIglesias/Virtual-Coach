@@ -190,12 +190,13 @@ def build_standings(snap: SessionSnapshot) -> list[ClassBlock]:
 def visible_rows(block: ClassBlock, top: int = 3, around: int = 2) -> list[Row]:
     """Los `top` primeros y una ventana de ±`around` alrededor de mi.
 
-    Si no estoy en el bloque (otra clase), los primeros `top + 2*around + 1`.
+    En las otras clases solo los `top` primeros: encima del juego cada fila
+    tapa pista, y de las otras clases basta saber quien manda.
     """
     rows = block.rows
     me = next((i for i, r in enumerate(rows) if r.is_me), None)
     if me is None:
-        return list(rows[: top + 2 * around + 1])
+        return list(rows[:top])
     keep = set(range(min(top, len(rows))))
     keep.update(range(max(0, me - around), min(len(rows), me + around + 1)))
     return [rows[i] for i in sorted(keep)]

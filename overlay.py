@@ -47,13 +47,16 @@ CLASS_HINTS = [
 ]
 PALETTE = [ACCENT, LIFT, VOICE, MANAGE, BRAKE, "#F06292"]
 
-W = 660
-PAD = 14
-GAPX = 10
-H_HDR, H_CLS, H_COLS, H_ROW, H_MORE, H_FOOT = 40, 32, 22, 30, 22, 26
-COLS = [("POS", 22, "w"), ("#", 44, "w"), ("PILOTO", 150, "w"),
-        ("iRATING", 96, "w"), ("GAP", 56, "e"), ("INT", 56, "e"),
-        ("ÚLTIMA", 66, "e"), ("MEJOR", 66, "e")]
+# Compacto a proposito: encima del juego cada pixel tapa pista. En un
+# monitor de 2560 px el panel ocupa ~22 % del ancho; --scale lo ajusta.
+PAD = 10
+GAPX = 8
+H_HDR, H_CLS, H_COLS, H_ROW, H_MORE = 30, 24, 16, 22, 16
+COLS = [("POS", 20, "w"), ("#", 36, "w"), ("PILOTO", 118, "w"),
+        ("iRATING", 84, "w"), ("GAP", 48, "e"), ("INT", 46, "e"),
+        ("ÚLTIMA", 60, "e"), ("MEJOR", 60, "e")]
+W = 2 * PAD + sum(w for _, w, _ in COLS) + GAPX * (len(COLS) - 1)
+F_ROW, F_SMALL, F_TINY = 12, 11, 9
 
 
 def _pick_font(candidates: list[str], fallback: str) -> str:
@@ -148,8 +151,8 @@ class Overlay:
         c.config(height=H_HDR * s)
         c.delete("all")
         self._rrect(0, 0, W * s, H_HDR * s, 8 * s, fill=BG, outline="#2A313A")
-        self._text(PAD * s, H_HDR * s / 2, "VIRTUAL COACH", 11, "bold", TEXT_DIM)
-        self._text((W - PAD) * s, H_HDR * s / 2, status, 12, fill=TEXT_FAINT, anchor="e")
+        self._text(PAD * s, H_HDR * s / 2, "VIRTUAL COACH", F_SMALL, "bold", TEXT_DIM)
+        self._text((W - PAD) * s, H_HDR * s / 2, status, F_SMALL, fill=TEXT_FAINT, anchor="e")
 
     # -- pintura ------------------------------------------------------------
 
@@ -177,18 +180,17 @@ class Overlay:
         c = self.canvas
         blocks = st.build_standings(snap)
         rows_by_block = [st.visible_rows(b, self.top, self.around) for b in blocks]
-        height = H_HDR + H_FOOT + sum(
+        height = H_HDR + sum(
             H_CLS + H_COLS + H_ROW * len(r) + (H_MORE if len(r) < b.n else 0)
             for b, r in zip(blocks, rows_by_block)
         )
-        c.config(height=height * s)
+        c.config(width=W * s, height=height * s)
         c.delete("all")
-        self._rrect(0, 0, W * s, height * s, 8 * s, fill=BG, outline="#2A313A")
+        self._rrect(0, 0, W * s, height * s, 6 * s, fill=BG, outline="#2A313A")
 
         y = self._header(snap, blocks)
         for i, (b, rows) in enumerate(zip(blocks, rows_by_block)):
             y = self._class(b, rows, self._class_color(b, i), y)
-        self._footer(y)
 
     def _class_color(self, b: st.ClassBlock, i: int) -> str:
         name = b.class_name.upper()
@@ -205,18 +207,18 @@ class Overlay:
         x = PAD * s
         kind = {"Race": "RACE", "Practice": "PRACTICE", "Open Qualify": "QUALY",
                 "Lone Qualify": "QUALY", "Warmup": "WARMUP"}.get(snap.session_type, snap.session_type.upper())
-        w = 8 * s + len(kind) * 7.5 * s
-        self._rrect(x, cy - 9 * s, x + w, cy + 9 * s, 4 * s, fill=TEXT, outline="")
-        self._text(x + w / 2, cy, kind, 11, "bold", BG, anchor="center")
-        x += w + 14 * s
+        w = 8 * s + len(kind) * 6.5 * s
+        self._rrect(x, cy - 8 * s, x + w, cy + 8 * s, 3 * s, fill=TEXT, outline="")
+        self._text(x + w / 2, cy, kind, F_TINY + 1, "bold", BG, anchor="center")
+        x += w + 10 * s
         if snap.laps_total:
-            self._text(x, cy, f"Lap {snap.laps_done + 1} / {snap.laps_total}", 13, "bold")
+            self._text(x, cy, f"Lap {snap.laps_done + 1} / {snap.laps_total}", F_ROW, "bold")
         else:
-            self._text(x, cy, f"Lap {snap.laps_done + 1}", 13, "bold")
-        x += 100 * s
+            self._text(x, cy, f"Lap {snap.laps_done + 1}", F_ROW, "bold")
+        x += 86 * s
         m, sec = divmod(max(0, int(snap.time_remain)), 60)
         remain = f"{m}:{sec:02d}" if snap.time_remain < 36000 else "—"
-        self._text(x, cy, remain, 13, fill=TEXT_DIM, mono=True)
+        self._text(x, cy, remain, F_ROW, fill=TEXT_DIM, mono=True)
 
         me = snap.me
         mine = next((b for b in blocks if b.is_mine), None)
@@ -226,12 +228,12 @@ class Overlay:
             if row:
                 col = TEXT_DIM if row.delta is None else (ACCENT if row.delta >= 0 else BRAKE)
                 txt = st.fmt_delta(row.delta)
-                w = 16 * s + len(txt) * 8 * s
-                self._rrect(xr - w, cy - 10 * s, xr, cy + 10 * s, 4 * s,
+                w = 14 * s + len(txt) * 7.5 * s
+                self._rrect(xr - w, cy - 9 * s, xr, cy + 9 * s, 3 * s,
                             fill=self._tint(col, 0.15), outline="")
-                self._text(xr - w / 2, cy, txt, 13, "bold", col, mono=True, anchor="center")
+                self._text(xr - w / 2, cy, txt, F_ROW, "bold", col, mono=True, anchor="center")
                 xr -= w + 8 * s
-            self._text(xr, cy, f"Tú · {st.fmt_ir(me.irating)}", 13, fill=TEXT_DIM, anchor="e")
+            self._text(xr, cy, f"Tú · {st.fmt_ir(me.irating)}", F_ROW, fill=TEXT_DIM, anchor="e")
         return H_HDR * s
 
     def _class(self, b: st.ClassBlock, rows, color: str, y: float) -> float:
@@ -243,19 +245,19 @@ class Overlay:
         cy = y + H_CLS * s / 2
         x = PAD * s
         name = (b.class_name or f"Clase {b.class_id}")[:14]
-        w = 8 * s + len(name) * 7.5 * s
-        self._rrect(x, cy - 8 * s, x + w, cy + 8 * s, 3 * s, fill=color, outline="")
-        self._text(x + w / 2, cy, name, 11, "bold", BG, anchor="center")
-        x += w + 10 * s
-        self._text(x, cy, f"SoF {b.sof:.0f}", 13, "bold", TEXT_DIM)
-        x += 80 * s
-        self._text(x, cy, f"{b.n} coches", 13, fill=TEXT_FAINT)
-        self._text((W - PAD) * s, cy, "iRating · Δ estimado", 11, fill=TEXT_FAINT, anchor="e")
+        w = 8 * s + len(name) * 6.5 * s
+        self._rrect(x, cy - 7 * s, x + w, cy + 7 * s, 3 * s, fill=color, outline="")
+        self._text(x + w / 2, cy, name, F_TINY + 1, "bold", BG, anchor="center")
+        x += w + 8 * s
+        self._text(x, cy, f"SoF {b.sof:.0f}", F_SMALL, "bold", TEXT_DIM)
+        x += 66 * s
+        self._text(x, cy, f"{b.n} coches", F_SMALL, fill=TEXT_FAINT)
+        self._text((W - PAD) * s, cy, "iRating · Δ ≈ estimado", F_TINY, fill=TEXT_FAINT, anchor="e")
         y += H_CLS * s
         # Cabecera de columnas
         cy = y + H_COLS * s / 2
         for name, x0, x1, anchor in self._cols():
-            self._text(x0 if anchor == "w" else x1, cy, name, 10, "bold", TEXT_FAINT, anchor=anchor)
+            self._text(x0 if anchor == "w" else x1, cy, name, F_TINY, "bold", TEXT_FAINT, anchor=anchor)
         y += H_COLS * s
         # Filas
         for i, r in enumerate(rows):
@@ -268,7 +270,7 @@ class Overlay:
             y += H_ROW * s
         if len(rows) < b.n:
             self._text(W * s / 2, y + H_MORE * s / 2, f"· · ·   {b.n - len(rows)} más   · · ·",
-                       10, fill=TEXT_FAINT, anchor="center")
+                       F_TINY, fill=TEXT_FAINT, anchor="center")
             y += H_MORE * s
         return y
 
@@ -286,48 +288,40 @@ class Overlay:
         car = r.car
         cols = list(self._cols())
         (_, x0, _, _) = cols[0]
-        self._text(x0, cy, str(r.pos), 13, "bold" if me else "normal",
+        self._text(x0, cy, str(r.pos), F_ROW, "bold" if me else "normal",
                    ACCENT if me else TEXT_DIM, mono=True)
         (_, x0, _, _) = cols[1]
-        self._text(x0, cy, f"#{car.number}", 13, fill=TEXT_DIM, mono=True)
+        self._text(x0, cy, f"#{car.number}", F_SMALL, fill=TEXT_DIM, mono=True)
         (_, x0, _, _) = cols[2]
-        self._text(x0, cy, _short(car.name), 13, "bold" if me else "normal")
+        self._text(x0, cy, _short(car.name), F_ROW, "bold" if me else "normal")
         (_, x0, x1, _) = cols[3]
-        self._rrect(x0, cy - 10 * s, x1, cy + 10 * s, 4 * s, fill=SURFACE_2, outline="")
-        self._text(x0 + 6 * s, cy, st.fmt_ir(car.irating), 12, fill=TEXT_DIM, mono=True)
+        self._rrect(x0, cy - 8 * s, x1, cy + 8 * s, 3 * s, fill=SURFACE_2, outline="")
+        self._text(x0 + 5 * s, cy, st.fmt_ir(car.irating), F_SMALL, fill=TEXT_DIM, mono=True)
         dcol = TEXT_FAINT if r.delta is None else (ACCENT if r.delta >= 0 else BRAKE)
-        self._text(x1 - 6 * s, cy, st.fmt_delta(r.delta), 12, "bold", dcol, mono=True, anchor="e")
+        self._text(x1 - 5 * s, cy, st.fmt_delta(r.delta), F_SMALL, "bold", dcol, mono=True, anchor="e")
         (_, _, x1, _) = cols[4]
         if car.on_pit_road:
-            self._text(x1, cy, "PIT", 12, "bold", VOICE, mono=True, anchor="e")
+            self._text(x1, cy, "PIT", F_SMALL, "bold", VOICE, mono=True, anchor="e")
         else:
-            self._text(x1, cy, st.fmt_gap(r.gap, r.pos == 1, r.laps_down), 13,
+            self._text(x1, cy, st.fmt_gap(r.gap, r.pos == 1, r.laps_down), F_ROW,
                        fill=TEXT_FAINT if r.pos == 1 else TEXT, mono=True, anchor="e")
         (_, _, x1, _) = cols[5]
-        self._text(x1, cy, "INT" if r.pos == 1 else st.fmt_gap(r.interval), 13,
+        self._text(x1, cy, "INT" if r.pos == 1 else st.fmt_gap(r.interval), F_SMALL,
                    fill=TEXT_FAINT if r.pos == 1 else TEXT_DIM, mono=True, anchor="e")
         (_, _, x1, _) = cols[6]
         pb = car.last_lap > 0 and car.best_lap > 0 and abs(car.last_lap - car.best_lap) < 1e-3
-        self._text(x1, cy, st.fmt_lap(car.last_lap), 13,
+        self._text(x1, cy, st.fmt_lap(car.last_lap), F_ROW,
                    fill=ACCENT if pb else TEXT, mono=True, anchor="e")
         (_, _, x1, _) = cols[7]
-        self._text(x1, cy, st.fmt_lap(car.best_lap), 13,
+        self._text(x1, cy, st.fmt_lap(car.best_lap), F_ROW,
                    fill=MANAGE if r.fastest else TEXT_DIM, mono=True, anchor="e")
-
-    def _footer(self, y: float) -> None:
-        s = self.s
-        self.canvas.create_rectangle(0, y, W * s, y + H_FOOT * s, fill="#0A0D11", outline="")
-        self._text(PAD * s, y + H_FOOT * s / 2,
-                   "ⓘ  El Δ de iRating es una ESTIMACIÓN (fórmula del SoF); iRacing lo confirma al acabar la sesión.",
-                   10, fill=TEXT_FAINT)
-
 
 def _short(name: str) -> str:
     """'Kevin Estre' -> 'K. Estre'. iRacing a veces mete un numero final."""
     parts = [p for p in name.split() if not p.isdigit()]
     if len(parts) >= 2:
-        return f"{parts[0][0]}. {' '.join(parts[1:])}"[:22]
-    return name[:22]
+        return f"{parts[0][0]}. {' '.join(parts[1:])}"[:17]
+    return name[:17]
 
 
 def _feed(source, overlay: Overlay, recorder: SessionRecorder | None) -> None:
