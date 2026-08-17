@@ -71,6 +71,7 @@ class Overlay:
         self.around = around
         self.s = scale
         self.snap: SessionSnapshot | None = None
+        self.status = "Esperando a iRacing… (entra en una sesión)"
         self.lock = threading.Lock()
 
         root.title("Virtual Coach — overlay")
@@ -114,12 +115,29 @@ class Overlay:
         with self.lock:
             self.snap = snap
 
+    def set_status(self, text: str) -> None:
+        with self.lock:
+            self.status = text
+
     def tick(self) -> None:
         with self.lock:
-            snap = self.snap
+            snap, status = self.snap, self.status
         if snap is not None:
             self.draw(snap)
+        else:
+            self.draw_waiting(status)
         self.root.after(250, self.tick)
+
+    def draw_waiting(self, status: str) -> None:
+        # Sin datos el canvas seria del color clave, o sea INVISIBLE, y no
+        # sabrias si el overlay esta vivo. Un panel pequeno lo dice.
+        s = self.s
+        c = self.canvas
+        c.config(height=H_HDR * s)
+        c.delete("all")
+        self._rrect(0, 0, W * s, H_HDR * s, 8 * s, fill=BG, outline="#2A313A")
+        self._text(PAD * s, H_HDR * s / 2, "VIRTUAL COACH", 11, "bold", TEXT_DIM)
+        self._text((W - PAD) * s, H_HDR * s / 2, status, 12, fill=TEXT_FAINT, anchor="e")
 
     # -- pintura ------------------------------------------------------------
 
@@ -300,13 +318,22 @@ def _short(name: str) -> str:
 
 
 def _feed(source, overlay: Overlay, recorder: SessionRecorder | None) -> None:
+    import traceback
+
     try:
+        n = 0
         for snap in source.snapshots():
             if recorder:
                 recorder.write(snap)
             overlay.push(snap)
-    except Exception as exc:  # que el hilo no muera en silencio
+            n += 1
+            if n == 1:
+                print(f"[overlay] primera foto: {len(snap.cars)} coches, sesion {snap.session_type}", flush=True)
+        overlay.set_status("Fin de la grabación")
+    except BaseException as exc:  # que el hilo no muera en silencio
         print(f"[overlay] fuente parada: {type(exc).__name__}: {exc}", flush=True)
+        traceback.print_exc()
+        overlay.set_status(f"Sin datos: {type(exc).__name__}: {exc}"[:80])
 
 
 def main() -> None:

@@ -307,8 +307,11 @@ class SessionRecorder:
     """
 
     def __init__(self, path):
-        self.path = path
-        self._fh = open(path, "w", encoding="utf-8")
+        from pathlib import Path
+
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._fh = open(self.path, "w", encoding="utf-8")
 
     def write(self, snap: SessionSnapshot) -> None:
         self._fh.write(snap.to_json() + "\n")
@@ -370,17 +373,18 @@ class IRacingSessionSource(SessionSource):
             )
         self.ir = irsdk.IRSDK()
         self.interval = 1.0 / hz
-        if not self.ir.startup():
-            raise SystemExit(
-                "No se encuentra iRacing. Arranca el juego y entra en sesion."
-            )
+        # No se exige el juego al arrancar: el overlay se abre antes de entrar
+        # en sesion y engancha solo cuando iRacing aparece (ver snapshots()).
+        self.ir.startup()
         self._drivers: dict[int, dict] = {}
         self._drivers_version = None
         self._my_idx = -1
 
     def _refresh_drivers(self) -> None:
-        version = self.ir["SessionInfoUpdate"]
-        if version == self._drivers_version and self._drivers:
+        # pyirsdk expone el contador de cambios del YAML como propiedad; si
+        # no estuviera, se relee cada foto (2 Hz: barato).
+        version = getattr(self.ir, "session_info_update", None)
+        if version is not None and version == self._drivers_version and self._drivers:
             return
         info = self.ir["DriverInfo"] or {}
         self._my_idx = int(info.get("DriverCarIdx", -1))
@@ -460,9 +464,28 @@ class IRacingSessionSource(SessionSource):
             self.ir.unfreeze_var_buffer_latest()
 
     def snapshots(self):
+        import traceback
+
         t0 = time.perf_counter()
+        seen_errors: set[str] = set()
         while True:
-            snap = self.snapshot(time.perf_counter() - t0)
+            if not self.ir.is_connected:
+                # El juego no esta (o se ha cerrado): reintenta cada segundo.
+                self._drivers = {}
+                self.ir.startup()
+                time.sleep(1.0)
+                continue
+            try:
+                snap = self.snapshot(time.perf_counter() - t0)
+            except Exception as exc:
+                # Un canal que no existe o cambia de forma no debe tumbar el
+                # overlay: se canta UNA vez por tipo de error y se sigue.
+                key = f"{type(exc).__name__}: {exc}"
+                if key not in seen_errors:
+                    seen_errors.add(key)
+                    print(f"[session] error leyendo la sesion: {key}", flush=True)
+                    traceback.print_exc()
+                snap = None
             if snap is not None:
                 yield snap
             time.sleep(self.interval)

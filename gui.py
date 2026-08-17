@@ -213,13 +213,19 @@ class CoachGUI:
         self.overlay_proc: subprocess.Popen | None = None
 
         root.title("Virtual Coach")
-        root.geometry("780x920")
-        root.minsize(720, 780)
+        # Alta como el contenido pero nunca mas que la pantalla: en un monitor
+        # de 1080p con barra de tareas se comia el registro y los botones.
+        alto = min(1000, root.winfo_screenheight() - 90)
+        root.geometry(f"780x{alto}")
+        root.minsize(720, 600)
         root.configure(fg_color=BG)
 
         self._build_header()
-        body = ctk.CTkFrame(root, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        # Con scroll: si la ventana no cabe entera, se llega a todo igual.
+        body = ctk.CTkScrollableFrame(root, fg_color="transparent",
+                                      scrollbar_button_color=SURFACE_2,
+                                      scrollbar_button_hover_color=LINE)
+        body.pack(fill="both", expand=True, padx=(20, 8), pady=(0, 20))
         self._build_reference(body)
         self._build_settings(body)
         self._build_fine(body)
@@ -432,7 +438,7 @@ class CoachGUI:
                       font=ctk.CTkFont(size=11), command=self.clear_log).pack(side="right", padx=8)
 
         self.log_box = ctk.CTkTextbox(box, fg_color="#0A0D11", text_color=DIM, wrap="word",
-                                      border_width=0, font=(MONO, 12))
+                                      border_width=0, font=(MONO, 12), height=240)
         self.log_box.pack(fill="both", expand=True, padx=12, pady=10)
         for tag, color in (("brake", BRAKE), ("gas", ACCENT), ("lift", LIFT),
                            ("manage", MANAGE), ("voice", VOICE), ("dim", DIM),
@@ -584,16 +590,31 @@ class CoachGUI:
         sesiones.mkdir(exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M")
         cmd = _tool_cmd("overlay") + ["--record", str(sesiones / f"{stamp}.jsonl")]
+        # Su salida va a un log junto a las grabaciones: si el overlay no
+        # aparece, ahi esta el porque (con DEVNULL se moria en silencio).
+        self._overlay_log = open(sesiones / "overlay.log", "a", encoding="utf-8")
         self.overlay_proc = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            cmd, stdout=self._overlay_log, stderr=subprocess.STDOUT,
             creationflags=CREATE_NO_WINDOW,
         )
         self.log("▦  Overlay de clasificacion en pantalla (Esc sobre el, o Parar, lo cierra).", "lift")
+        self.log(f"   graba en {sesiones / (stamp + '.jsonl')}; log en sesiones/overlay.log", "dim")
+        self.root.after(3000, self._check_overlay)
+
+    def _check_overlay(self) -> None:
+        p = self.overlay_proc
+        if p is not None and p.poll() is not None:
+            self.log(f"[!] El overlay se ha cerrado solo (codigo {p.returncode}). "
+                     "Mira sesiones/overlay.log.", "brake")
 
     def _stop_overlay(self) -> None:
         if self.overlay_proc is not None and self.overlay_proc.poll() is None:
             self.overlay_proc.terminate()
         self.overlay_proc = None
+        log = getattr(self, "_overlay_log", None)
+        if log is not None:
+            log.close()
+            self._overlay_log = None
 
     def stop_coach(self) -> None:
         self._stop_overlay()
