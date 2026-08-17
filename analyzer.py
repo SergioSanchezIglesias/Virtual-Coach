@@ -81,6 +81,24 @@ def load_lap(path: str) -> pd.DataFrame:
     df["Brake"] = df["Brake"].clip(0.0, 1.0)
     df["Throttle"] = df["Throttle"].clip(0.0, 1.0)
 
+    # La ESCALA del pedal es del piloto, no del circuito (leccion de VIR).
+    # Cada referencia de Garage61 pisa "hasta arriba" a un valor distinto:
+    # 1.00 Hockenheim, 0.78 Winton, 0.59 Tsukuba, 0.38 VIR (y ese hace 2:22
+    # en GT4: es calibracion/fuerza de SU pedal, no ritmo). Con umbrales
+    # absolutos, para el de VIR BRAKE_ON = 0.15 era ya el 40 % de su frenada
+    # maxima: se perdian 4 frenadas reales de 13 y otra sonaba 13 m tarde.
+    # Asi que el freno se normaliza al pico de la propia vuelta y todos los
+    # umbrales de abajo hablan de "fraccion de lo que ese piloto pisa como
+    # mucho". Es la misma filosofia que la longitud del circuito: se mide de
+    # la vuelta, no se teclea. Medido: en Hockenheim (pico 1.00) no cambia
+    # nada, en Winton y Tsukuba no se mueve ni una frenada. La unica
+    # excepcion es BRAKE_ZERO ("pedal de verdad suelto"), que es ruido de
+    # lectura y sigue en unidades crudas: por eso se guarda la escala.
+    peak = float(df["Brake"].max())
+    df.attrs["brake_scale"] = peak if peak > 0 else 1.0
+    if peak > 0:
+        df["Brake"] = df["Brake"] / peak
+
     # No hay canal de tiempo: se reconstruye del muestreo uniforme a 60 Hz.
     df["t"] = np.arange(len(df)) / SAMPLE_RATE
 
@@ -115,6 +133,9 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
     else:
         abs_active = np.zeros(len(df), dtype=bool)
     n = len(df)
+    # El freno viene normalizado al pico de la vuelta (ver load_lap), pero el
+    # "cero de verdad" es ruido del pedal en unidades crudas: se reescala.
+    brake_zero = BRAKE_ZERO / df.attrs.get("brake_scale", 1.0)
 
     zones = []
     i = 0
@@ -165,10 +186,10 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
             # punto de gas no se mueve ni un metro (lo vigilan sus golden).
             if coasting:
                 real = gas
-                while (real < n - 1 and brake[real] > BRAKE_ZERO
+                while (real < n - 1 and brake[real] > brake_zero
                        and throttle[real] < cfg.throttle_on):
                     real += 1
-                if real > gas and brake[real] <= BRAKE_ZERO:
+                if real > gas and brake[real] <= brake_zero:
                     gas = real
                     window = gas + int(0.6 * SAMPLE_RATE)
                     coasting = (throttle[gas:min(window, n)].max()

@@ -22,7 +22,7 @@
   {
     "aviso": "GAS  ",
     "giro": 0,
-    "pos": 0.2133
+    "pos": 0.2135
   },
   {
     "aviso": "  .",
@@ -47,37 +47,37 @@
   {
     "aviso": "GAS  ",
     "giro": 0,
-    "pos": 0.2619
+    "pos": 0.2623
   },
   {
     "aviso": "MEDIO GAS",
     "giro": 0,
-    "pos": 0.3614
+    "pos": 0.3625
   },
   {
     "aviso": "  .",
     "giro": 0,
-    "pos": 0.4244
+    "pos": 0.4242
   },
   {
     "aviso": "  .",
     "giro": 0,
-    "pos": 0.4309
+    "pos": 0.4307
   },
   {
     "aviso": "  .",
     "giro": 0,
-    "pos": 0.438
+    "pos": 0.4378
   },
   {
     "aviso": "FRENA",
     "giro": 0,
-    "pos": 0.4455
+    "pos": 0.4453
   },
   {
     "aviso": "GAS  ",
     "giro": 0,
-    "pos": 0.4842
+    "pos": 0.4844
   },
   {
     "aviso": "  .",
@@ -127,7 +127,7 @@
   {
     "aviso": "GAS  ",
     "giro": 0,
-    "pos": 0.5776
+    "pos": 0.5777
   },
   {
     "aviso": "  .",
@@ -152,7 +152,7 @@
   {
     "aviso": "GAS  ",
     "giro": 0,
-    "pos": 0.7008
+    "pos": 0.7009
   },
   {
     "aviso": "  .",
@@ -177,7 +177,7 @@
   {
     "aviso": "GAS  ",
     "giro": 0,
-    "pos": 0.8521
+    "pos": 0.8522
   },
   {
     "aviso": "  .",
@@ -202,7 +202,7 @@
   {
     "aviso": "GAS  ",
     "giro": 0,
-    "pos": 0.883
+    "pos": 0.8835
   },
   {
     "aviso": "  .",
@@ -227,7 +227,7 @@
   {
     "aviso": "GAS  ",
     "giro": 1,
-    "pos": 0.0835
+    "pos": 0.0837
   },
   {
     "aviso": "SUELTA",
@@ -262,7 +262,7 @@
   {
     "aviso": "GAS  ",
     "giro": 1,
-    "pos": 0.2133
+    "pos": 0.2135
   },
   {
     "aviso": "  .",
@@ -287,37 +287,37 @@
   {
     "aviso": "GAS  ",
     "giro": 1,
-    "pos": 0.2619
+    "pos": 0.2623
   },
   {
     "aviso": "MEDIO GAS",
     "giro": 1,
-    "pos": 0.3614
+    "pos": 0.3625
   },
   {
     "aviso": "  .",
     "giro": 1,
-    "pos": 0.4244
+    "pos": 0.4242
   },
   {
     "aviso": "  .",
     "giro": 1,
-    "pos": 0.4309
+    "pos": 0.4307
   },
   {
     "aviso": "  .",
     "giro": 1,
-    "pos": 0.438
+    "pos": 0.4378
   },
   {
     "aviso": "FRENA",
     "giro": 1,
-    "pos": 0.4455
+    "pos": 0.4453
   },
   {
     "aviso": "GAS  ",
     "giro": 1,
-    "pos": 0.4842
+    "pos": 0.4844
   },
   {
     "aviso": "  .",
@@ -367,7 +367,7 @@
   {
     "aviso": "GAS  ",
     "giro": 1,
-    "pos": 0.5776
+    "pos": 0.5777
   },
   {
     "aviso": "  .",
@@ -392,7 +392,7 @@
   {
     "aviso": "GAS  ",
     "giro": 1,
-    "pos": 0.7008
+    "pos": 0.7009
   },
   {
     "aviso": "  .",
@@ -417,7 +417,7 @@
   {
     "aviso": "GAS  ",
     "giro": 1,
-    "pos": 0.8521
+    "pos": 0.8522
   },
   {
     "aviso": "  .",
@@ -442,7 +442,7 @@
   {
     "aviso": "GAS  ",
     "giro": 1,
-    "pos": 0.883
+    "pos": 0.8835
   },
   {
     "aviso": "  .",
@@ -467,7 +467,7 @@
   {
     "aviso": "GAS  ",
     "giro": 2,
-    "pos": 0.0835
+    "pos": 0.0837
   },
   {
     "aviso": "SUELTA",
@@ -502,7 +502,7 @@
   {
     "aviso": "GAS  ",
     "giro": 2,
-    "pos": 0.2133
+    "pos": 0.2135
   },
   {
     "aviso": "  .",
@@ -527,37 +527,37 @@
   {
     "aviso": "GAS  ",
     "giro": 2,
-    "pos": 0.2619
+    "pos": 0.2623
   },
   {
     "aviso": "MEDIO GAS",
     "giro": 2,
-    "pos": 0.3614
+    "pos": 0.3625
   },
   {
     "aviso": "  .",
     "giro": 2,
-    "pos": 0.4244
+    "pos": 0.4242
   },
   {
     "aviso": "  .",
     "giro": 2,
-    "pos": 0.4309
+    "pos": 0.4307
   },
   {
     "aviso": "  .",
     "giro": 2,
-    "pos": 0.438
+    "pos": 0.4378
   },
   {
     "aviso": "FRENA",
     "giro": 2,
-    "pos": 0.4455
+    "pos": 0.4453
   },
   {
     "aviso": "GAS  ",
     "giro": 2,
-    "pos": 0.4842
+    "pos": 0.4844
   },
   {
     "aviso": "  .",
@@ -607,7 +607,7 @@
   {
     "aviso": "GAS  ",
     "giro": 2,
-    "pos": 0.5776
+    "pos": 0.5777
   },
   {
     "aviso": "  .",
@@ -632,7 +632,7 @@
   {
     "aviso": "GAS  ",
     "giro": 2,
-    "pos": 0.7008
+    "pos": 0.7009
   },
   {
     "aviso": "  .",
@@ -657,7 +657,7 @@
   {
     "aviso": "GAS  ",
     "giro": 2,
-    "pos": 0.8521
+    "pos": 0.8522
   },
   {
     "aviso": "  .",
@@ -682,7 +682,7 @@
   {
     "aviso": "GAS  ",
     "giro": 2,
-    "pos": 0.883
+    "pos": 0.8835
   },
   {
     "aviso": "  .",
@@ -707,7 +707,7 @@
   {
     "aviso": "GAS  ",
     "giro": 3,
-    "pos": 0.0835
+    "pos": 0.0837
   },
   {
     "aviso": "SUELTA",

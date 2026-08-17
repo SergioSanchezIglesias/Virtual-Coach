@@ -439,3 +439,61 @@ def test_tsukuba_avisa_gas_en_las_cinco_frenadas(analyzer_cfg):
     )
     ref = a.to_reference(zones, [], [], analyzer_cfg)
     assert sum(e["type"] == "throttle" for e in ref["events"]) == 5
+
+
+# ---------------------------------------------------------------------------
+# La escala del pedal (leccion de VIR)
+# ---------------------------------------------------------------------------
+#
+# Cada piloto de Garage61 pisa "hasta arriba" a un valor distinto: 1.00 en
+# Hockenheim, 0.78 en Winton, 0.59 en Tsukuba y 0.38 en VIR (Yeonwoo Lee,
+# AMG GT4). Es calibracion/fuerza de SU pedal, no ritmo: el de VIR hace 2:22.
+# Con umbrales absolutos (BRAKE_ON 0.15 = el 40 % de su frenada maxima) se
+# perdian 4 frenadas reales de 13 y otra se detectaba 13 m tarde.
+
+
+def _con_pedal_escalado(circuito: str, factor: float, tmp_path) -> str:
+    """El mismo CSV con el freno multiplicado: otro piloto, mismo pie."""
+    import pandas as pd
+
+    df = pd.read_csv(CSV[circuito])
+    df["Brake"] = df["Brake"] * factor
+    out = tmp_path / f"{circuito}_x{factor}.csv"
+    df.to_csv(out, index=False)
+    return str(out)
+
+
+@pytest.mark.parametrize("factor", [0.4, 0.7])
+def test_la_escala_del_pedal_no_mueve_las_frenadas(circuito, factor,
+                                                    analyzer_cfg, tmp_path):
+    """Un pedal que llega a 0.4 en vez de a 1.0 tiene que dar las MISMAS
+    frenadas, en los mismos metros, con el mismo punto de gas."""
+    ref = a.load_lap(str(CSV[circuito]))
+    esc = a.load_lap(_con_pedal_escalado(circuito, factor, tmp_path))
+    length = a.track_length_from_speed(ref)
+
+    z_ref = a.detect_events(ref, length, analyzer_cfg)
+    z_esc = a.detect_events(esc, length, analyzer_cfg)
+    assert len(z_ref) == len(z_esc), (len(z_ref), len(z_esc))
+    for r, e in zip(z_ref, z_esc):
+        assert abs(r["brake_pos"] - e["brake_pos"]) < 1e-6
+        assert abs(r["throttle_pos"] - e["throttle_pos"]) < 1e-6
+        assert r["coasting"] == e["coasting"]
+
+
+def test_vir_detecta_las_trece_frenadas(analyzer_cfg):
+    """La vuelta real de VIR con el pedal a 0.376: 13 zonas, y entre ellas las
+    cuatro que con umbrales absolutos se perdian (12.4, 15.0, 52.4 y 83.0 %)."""
+    from conftest import DATA
+
+    df = a.load_lap(str(DATA / "vir.csv"))
+    length = a.track_length_from_speed(df)
+    zones = a.detect_events(df, length, analyzer_cfg)
+    posiciones = [round(z["brake_pos"] * 100, 1) for z in zones]
+    assert len(zones) == 13, posiciones
+    for esperada in (12.4, 15.0, 52.4, 83.0):
+        assert any(abs(p - esperada) < 0.3 for p in posiciones), (
+            f"falta la frenada del {esperada} %: {posiciones}"
+        )
+    # La frenada 8 (43.6 %) suena donde el pie aterriza, no 13 m despues.
+    assert any(abs(p - 43.6) < 0.1 for p in posiciones), posiciones
