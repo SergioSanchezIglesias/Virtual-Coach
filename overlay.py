@@ -52,9 +52,11 @@ PALETTE = [ACCENT, LIFT, VOICE, MANAGE, BRAKE, "#F06292"]
 PAD = 10
 GAPX = 8
 H_HDR, H_CLS, H_COLS, H_ROW, H_MORE = 30, 24, 16, 22, 16
-COLS = [("POS", 20, "w"), ("#", 36, "w"), ("PILOTO", 118, "w"),
-        ("iRATING", 84, "w"), ("GAP", 48, "e"), ("INT", 46, "e"),
-        ("ÚLTIMA", 60, "e"), ("MEJOR", 60, "e")]
+# Anchos medidos con Consolas/Segoe UI (Windows), que son mas anchas que
+# las del Mac: un tiempo "1:41.234" necesita ~68 px a 12 pt.
+COLS = [("POS", 20, "w"), ("#", 36, "w"), ("PILOTO", 124, "w"),
+        ("iRATING", 84, "w"), ("GAP", 52, "e"), ("INT", 48, "e"),
+        ("ÚLTIMA", 72, "e"), ("MEJOR", 72, "e")]
 W = 2 * PAD + sum(w for _, w, _ in COLS) + GAPX * (len(COLS) - 1)
 F_ROW, F_SMALL, F_TINY = 12, 11, 9
 
