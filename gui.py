@@ -2,8 +2,8 @@
 """
 gui.py — Ventana del coach.
 
-Eliges la vuelta de referencia (CSV de Garage61), la procesa sola, afinas los
-avisos al oido y lanzas el coach. Nada mas.
+Eliges la vuelta de referencia (CSV de Garage61), la procesa sola, decides
+que quieres oir y ver (pitidos, voz, clasificacion) y lanzas el coach. Nada mas.
 
 Decision de arquitectura (intacta desde la primera version): esta ventana NO
 conoce la logica del coach. Lanza analyzer.py y coach.py como procesos APARTE,
@@ -11,11 +11,13 @@ con los mismos comandos que se teclearian a mano. El core validado en pista no
 se importa ni se toca: la ventana solo lo orquesta desde fuera. Un bug aqui
 nunca puede tumbar el coach.
 
-Sobre los ajustes: todo lo que antes solo existia por linea de comandos y se
-afinaba al oido (--lead, --volume, --countdown, --countdown-interval,
---voice-volume, --count-volume) esta arriba, a mano. Lo que casi nunca se toca
-(--margin, --speed-tol, --review-top) vive plegado en "Ajuste fino", porque una
-ventana que lo ensena todo a la vez no ensena nada.
+Sobre los ajustes: ya no hay. La ventana tuvo steppers para --lead, --volume,
+--countdown, --countdown-interval, --voice-volume, --count-volume y un "ajuste
+fino" plegado; tras varias sesiones rodando con los valores de fabrica, Sergio
+no tocaba ninguno (ago-2026), y una fila de ajustes que nadie toca solo es
+ruido delante del boton de Empezar. Los valores afinados en pista viven en
+DEFAULTS y viajan al coach en cada arranque. Quien quiera afinar sigue teniendo
+el CLI de coach.py con todos los flags.
 
 El modo prueba (--replay) NO esta aqui a proposito: es una herramienta de
 desarrollo, y en la ventana solo estorbaba. Sigue en el CLI.
@@ -73,8 +75,8 @@ READY_BG  = "#132018"
 
 MONO = "Menlo" if sys.platform == "darwin" else "Consolas"
 
-# Parametros por defecto: los mismos que el coach, salvo la cuenta atras, que
-# se afino al oido en pista.
+# Parametros afinados en pista. Son los que la ventana pasa SIEMPRE al coach:
+# coinciden con los del CLI salvo la cuenta atras (0.75, decidido en ago-2026).
 DEFAULTS = {
     "lead": 0.35,
     "volume": 0.35,
@@ -98,77 +100,6 @@ def _tool_cmd(tool: str) -> list[str]:
     if getattr(sys, "frozen", False):
         return [sys.executable, tool]
     return [sys.executable, str(HERE / "app.py"), tool]
-
-
-class Stepper(ctk.CTkFrame):
-    """Un ajuste numerico: etiqueta, [-] valor [+] y una barra de posicion.
-
-    Botones y no un slider a proposito: con un slider no clavas 0.35, y estos
-    numeros se afinan al oido en saltos concretos, no arrastrando el raton.
-    """
-
-    def __init__(self, master, label: str, hint: str, *, vmin: float,
-                 vmax: float, step: float, value: float, fmt, color: str = ACCENT):
-        super().__init__(master, fg_color=SURFACE_2, corner_radius=10)
-        self.vmin, self.vmax, self.step = vmin, vmax, step
-        self.value = value
-        self.fmt = fmt
-
-        self.grid_columnconfigure(0, weight=1)
-
-        texts = ctk.CTkFrame(self, fg_color="transparent")
-        texts.grid(row=0, column=0, sticky="w", padx=(14, 0), pady=(11, 0))
-        self.label = ctk.CTkLabel(texts, text=label, font=ctk.CTkFont(size=13, weight="bold"),
-                                  text_color=TEXT, anchor="w")
-        self.label.pack(anchor="w")
-        self.hint = ctk.CTkLabel(texts, text=hint, font=ctk.CTkFont(size=11),
-                                 text_color=FAINT, anchor="w")
-        self.hint.pack(anchor="w")
-
-        ctrl = ctk.CTkFrame(self, fg_color="transparent")
-        ctrl.grid(row=0, column=1, sticky="e", padx=(0, 12), pady=(11, 0))
-        self.minus = ctk.CTkButton(ctrl, text="−", width=30, height=30, corner_radius=8,
-                                   fg_color=SURFACE, hover_color=HOVER, border_width=1,
-                                   border_color=LINE, text_color=DIM,
-                                   font=ctk.CTkFont(size=15), command=lambda: self._bump(-1))
-        self.minus.pack(side="left")
-        self.readout = ctk.CTkLabel(ctrl, text="", width=84, height=30, corner_radius=8,
-                                    fg_color=SURFACE, text_color=TEXT,
-                                    font=ctk.CTkFont(family=MONO, size=13))
-        self.readout.pack(side="left", padx=6)
-        self.plus = ctk.CTkButton(ctrl, text="+", width=30, height=30, corner_radius=8,
-                                  fg_color=SURFACE, hover_color=HOVER, border_width=1,
-                                  border_color=LINE, text_color=DIM,
-                                  font=ctk.CTkFont(size=15), command=lambda: self._bump(1))
-        self.plus.pack(side="left")
-
-        self.bar = ctk.CTkProgressBar(self, height=4, corner_radius=2,
-                                      fg_color=LINE, progress_color=color)
-        self.bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(9, 13))
-
-        self._refresh()
-
-    def _bump(self, sign: int) -> None:
-        v = self.value + sign * self.step
-        # Redondeo al paso: sin esto, sumar 0.05 quince veces da 0.7500000001.
-        v = round(round(v / self.step) * self.step, 6)
-        self.value = max(self.vmin, min(self.vmax, v))
-        self._refresh()
-
-    def _refresh(self) -> None:
-        self.readout.configure(text=self.fmt(self.value))
-        span = self.vmax - self.vmin
-        self.bar.set((self.value - self.vmin) / span if span else 0)
-
-    def get(self) -> float:
-        return self.value
-
-    def set_enabled(self, on: bool) -> None:
-        state = "normal" if on else "disabled"
-        self.minus.configure(state=state)
-        self.plus.configure(state=state)
-        self.readout.configure(text_color=TEXT if on else FAINT)
-        self.label.configure(text_color=TEXT if on else FAINT)
 
 
 class ToggleRow(ctk.CTkFrame):
@@ -215,9 +146,9 @@ class CoachGUI:
         root.title("Virtual Coach")
         # Alta como el contenido pero nunca mas que la pantalla: en un monitor
         # de 1080p con barra de tareas se comia el registro y los botones.
-        alto = min(1000, root.winfo_screenheight() - 90)
+        alto = min(760, root.winfo_screenheight() - 90)
         root.geometry(f"780x{alto}")
-        root.minsize(720, 600)
+        root.minsize(720, 560)
         root.configure(fg_color=BG)
 
         self._build_header()
@@ -227,8 +158,6 @@ class CoachGUI:
                                       scrollbar_button_hover_color=LINE)
         body.pack(fill="both", expand=True, padx=(20, 8), pady=(0, 20))
         self._build_reference(body)
-        self._build_settings(body)
-        self._build_fine(body)
         self._build_toggles(body)
         self._build_actions(body)
         self._build_log(body)
@@ -293,114 +222,16 @@ class CoachGUI:
             ctk.CTkLabel(row, text=hint, text_color=FAINT,
                          font=ctk.CTkFont(size=11)).pack(side="left", padx=8)
 
-    @staticmethod
-    def _new_row(parent):
-        """Fila de dos ajustes. Los Stepper se crean DENTRO de ella: un
-        pack(in_=...) entre hermanos deja el widget detras del contenedor."""
-        row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.pack(fill="x", pady=(0, 10))
-        return row
-
-    @staticmethod
-    def _pack_pair(left, right) -> None:
-        left.pack(side="left", fill="x", expand=True, padx=(0, 7))
-        right.pack(side="left", fill="x", expand=True, padx=(7, 0))
-
-    def _build_settings(self, parent) -> None:
-        self._section(parent, "AVISOS", "afinalo al oido, rodando")
-        row = self._new_row(parent)
-        self.s_lead = Stepper(row, "Antelacion", "cuanto antes suena el pitido",
-                              vmin=0.05, vmax=1.0, step=0.05, value=DEFAULTS["lead"],
-                              fmt=lambda v: f"{v:.2f} s")
-        self.s_volume = Stepper(row, "Volumen de pitidos", "los cuatro tonos, a la vez",
-                                vmin=0.05, vmax=1.0, step=0.05, value=DEFAULTS["volume"],
-                                fmt=lambda v: f"{v:.2f}", color=BRAKE)
-        self._pack_pair(self.s_lead, self.s_volume)
-
-        row = self._new_row(parent)
-        self.s_countdown = Stepper(row, "Cuenta atras", "ticks de preparacion antes de frenar",
-                                   vmin=0, vmax=8, step=1, value=DEFAULTS["countdown"],
-                                   fmt=lambda v: "sin cuenta" if v < 1 else f"{int(v)} ticks")
-        self.s_interval = Stepper(row, "Ritmo de la cuenta", "segundos entre tick y tick",
-                                  vmin=0.20, vmax=1.5, step=0.05,
-                                  value=DEFAULTS["countdown_interval"],
-                                  fmt=lambda v: f"{v:.2f} s")
-        self._pack_pair(self.s_countdown, self.s_interval)
-
-        row = self._new_row(parent)
-        self.s_voice_vol = Stepper(row, "Volumen de voz", "para que gane al ruido del motor",
-                                   vmin=0.0, vmax=1.5, step=0.05,
-                                   value=DEFAULTS["voice_volume"],
-                                   fmt=lambda v: f"{v:.2f}", color=VOICE)
-        self.s_count_vol = Stepper(row, "Volumen de los ticks", "la cuenta atras, no el pitido",
-                                   vmin=0.0, vmax=1.0, step=0.05,
-                                   value=DEFAULTS["count_volume"], fmt=lambda v: f"{v:.2f}")
-        self._pack_pair(self.s_voice_vol, self.s_count_vol)
-
-    def _build_fine(self, parent) -> None:
-        """Ajuste fino: plegado por defecto. Esta aqui el dia que haga falta."""
-        box = ctk.CTkFrame(parent, fg_color="#12161C", corner_radius=12,
-                           border_width=1, border_color=LINE)
-        box.pack(fill="x", pady=(2, 16))
-
-        head = ctk.CTkFrame(box, fg_color="transparent")
-        head.pack(fill="x", padx=14, pady=12)
-        self.fine_btn = ctk.CTkButton(head, text="▸  AJUSTE FINO", width=140, height=22,
-                                      fg_color="transparent", hover_color=SURFACE_2,
-                                      text_color=DIM, anchor="w",
-                                      font=ctk.CTkFont(size=11, weight="bold"),
-                                      command=self._toggle_fine)
-        self.fine_btn.pack(side="left")
-        ctk.CTkLabel(head, text="no lo toques sin motivo", text_color=FAINT,
-                     font=ctk.CTkFont(size=11)).pack(side="left")
-
-        self.fine_box = ctk.CTkFrame(box, fg_color="transparent")
-        self.fine_open = False
-
-        row = self._new_row(self.fine_box)
-        self.s_margin = Stepper(row, "Margen de seguridad",
-                                "metros extra de antelacion",
-                                vmin=0, vmax=50, step=1, value=DEFAULTS["margin"],
-                                fmt=lambda v: f"{int(v)} m")
-        self.s_speed_tol = Stepper(row, "Tolerancia de velocidad",
-                                   "si llegas muy distinto, no avisa",
-                                   vmin=0.02, vmax=0.40, step=0.01,
-                                   value=DEFAULTS["speed_tol"], fmt=lambda v: f"{v * 100:.0f} %")
-        self._pack_pair(self.s_margin, self.s_speed_tol)
-
-        row = self._new_row(self.fine_box)
-        self.s_review = Stepper(row, "Consejos por vuelta", "como mucho, los peores",
-                                vmin=0, vmax=5, step=1, value=DEFAULTS["review_top"],
-                                fmt=lambda v: "ninguno" if v < 1 else f"{int(v)}",
-                                color=MANAGE)
-        self.s_review.pack(fill="x", expand=True)
-
-    def _toggle_fine(self) -> None:
-        self.fine_open = not self.fine_open
-        if self.fine_open:
-            self.fine_box.pack(fill="x", padx=14, pady=(0, 6))
-            self.fine_btn.configure(text="▾  AJUSTE FINO")
-        else:
-            self.fine_box.pack_forget()
-            self.fine_btn.configure(text="▸  AJUSTE FINO")
-
     def _build_toggles(self, parent) -> None:
         self._section(parent, "QUE QUIERES OIR")
+        self.t_beeps = ToggleRow(parent, "Pitidos",
+                                 "freno, gas, suelta y medio gas, con su cuenta atras",
+                                 BRAKE, value=True)
+        self.t_beeps.pack(fill="x", pady=(0, 8))
         self.t_voice = ToggleRow(parent, "Voz",
                                  "\"Frena, 40%, tercera\" antes de cada pitido",
-                                 VOICE, value=True, command=self._sync_training)
-        self.t_voice.pack(fill="x", pady=(0, 8))
-
-        # Entrenamiento CUELGA de la voz: sin frase no hay donde meter la
-        # correccion (un pitido no puede decirte "suave"), asi que al apagar la
-        # voz esta fila se apaga y se agrisa. Nada de opciones que parecen
-        # hacer algo y no hacen nada.
-        indent = ctk.CTkFrame(parent, fg_color="transparent")
-        indent.pack(fill="x", pady=(0, 16))
-        self.t_training = ToggleRow(indent, "Entrenamiento",
-                                    "corrige la curva que peor te sale (\"…tercera, suave\")",
-                                    MANAGE)
-        self.t_training.pack(fill="x", padx=(26, 0))
+                                 VOICE, value=True)
+        self.t_voice.pack(fill="x", pady=(0, 16))
 
         self._section(parent, "QUE QUIERES VER")
         self.t_overlay = ToggleRow(parent, "Clasificacion en pantalla",
@@ -449,25 +280,13 @@ class CoachGUI:
     # -----------------------------------------------------------------------
     # Estado
     # -----------------------------------------------------------------------
-    def _sync_training(self) -> None:
-        """La fila de entrenamiento sigue a la de voz."""
-        on = self.t_voice.get()
-        self.t_training.set_enabled(on)
-        if not on:
-            self.t_training.var.set(False)
-
     def _set_chip(self, text: str, color: str, bg: str) -> None:
         self.chip.configure(text=f"  ●  {text}  ", text_color=color, fg_color=bg)
 
     def _set_controls_enabled(self, on: bool) -> None:
         """Rodando no se toca nada: los flags ya viajaron con el proceso."""
-        for s in (self.s_lead, self.s_volume, self.s_countdown, self.s_interval,
-                  self.s_voice_vol, self.s_count_vol, self.s_margin,
-                  self.s_speed_tol, self.s_review):
-            s.set_enabled(on)
-        self.t_voice.set_enabled(on)
-        self.t_overlay.set_enabled(on)
-        self.t_training.set_enabled(on and self.t_voice.get())
+        for t in (self.t_beeps, self.t_voice, self.t_overlay):
+            t.set_enabled(on)
         self.pick_btn.configure(state="normal" if on else "disabled")
 
     # -----------------------------------------------------------------------
@@ -537,22 +356,26 @@ class CoachGUI:
         if self.reference is None or self.coach_proc is not None:
             return
 
+        d = DEFAULTS
+        # "Pitidos" apagado = tonos y ticks a volumen cero. El coach sigue
+        # calculando y registrando cada aviso igual (y la voz, si esta, suena
+        # sola): no hay un flag de silencio en el core y no hace falta uno.
+        volume = d["volume"] if self.t_beeps.get() else 0.0
+        count_volume = d["count_volume"] if self.t_beeps.get() else 0.0
         cmd = _tool_cmd("coach") + [
             str(self.reference),
-            "--lead", f"{self.s_lead.get():.2f}",
-            "--volume", f"{self.s_volume.get():.2f}",
-            "--margin", f"{self.s_margin.get():.0f}",
-            "--speed-tol", f"{self.s_speed_tol.get():.2f}",
-            "--countdown", f"{int(self.s_countdown.get())}",
-            "--countdown-interval", f"{self.s_interval.get():.2f}",
-            "--count-volume", f"{self.s_count_vol.get():.2f}",
-            "--voice-volume", f"{self.s_voice_vol.get():.2f}",
-            "--review-top", f"{int(self.s_review.get())}",
+            "--lead", f"{d['lead']:.2f}",
+            "--volume", f"{volume:.2f}",
+            "--margin", f"{d['margin']:.0f}",
+            "--speed-tol", f"{d['speed_tol']:.2f}",
+            "--countdown", f"{int(d['countdown'])}",
+            "--countdown-interval", f"{d['countdown_interval']:.2f}",
+            "--count-volume", f"{count_volume:.2f}",
+            "--voice-volume", f"{d['voice_volume']:.2f}",
+            "--review-top", f"{int(d['review_top'])}",
         ]
         if self.t_voice.get():
             cmd += ["--voice"]
-            if self.t_training.get():
-                cmd += ["--training"]
 
         self.log("\n▶  Arrancando coach — iRacing en vivo…", "gas")
 
@@ -630,7 +453,6 @@ class CoachGUI:
         self.stop_btn.configure(state="disabled", fg_color=SURFACE,
                                 border_color=LINE, text_color=FAINT)
         self._set_controls_enabled(True)
-        self._sync_training()
         self._set_chip("Listo" if self.reference else "En espera",
                        ACCENT if self.reference else DIM,
                        READY_BG if self.reference else SURFACE_2)
