@@ -22,7 +22,7 @@ Trabajamos en español.
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba y VIR como fixtures) | 146 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba y VIR como fixtures) | 151 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -367,12 +367,29 @@ vuelta de diferencia se dice con el color, no con el orden.** El que me
 dobla a 2 s va "delante" aunque lleve una vuelta más; `laps_diff` (+1 me
 dobla → rojo, −1 le doblo → azul, misma vuelta → blanco, como el relative de
 iRacing) es lo que te dice si estás luchando por posición o solo cediendo
-paso. Los segundos salen con la mejor vuelta de la SESIÓN (aquí conviven
-clases). Va en el MISMO proceso que la clasificación (`--relative`, panel
+paso. **Los segundos son `CarIdxEstTime` del SDK** (tiempo hasta ese punto
+de la pista según la vuelta rápida de cada coche), con la mejor vuelta de la
+SESIÓN solo para corregir el paso por meta y como reserva en JSONL viejos
+(`est_time` = 0). Convertir DISTANCIA a segundos con la mejor vuelta supone
+velocidad constante y Sergio lo vio en pista: "en cada curva el relative
+baja 2-3 s y vuelve a subir" (100 m en recta son 1,4 s; en una horquilla, 6).
+Lo vigilan `test_el_relative_usa_el_tiempo_estimado_del_sdk_si_lo_hay` y
+`test_el_relative_con_est_time_da_la_vuelta_a_meta`. Va en el MISMO proceso que la clasificación (`--relative`, panel
 `RelativePanel` sobre el mismo `Feed`): una lectura del SDK, una grabación;
 la GUI relanza el proceso con la combinación de interruptores que haya. Cada
 panel recuerda su posición por separado (`overlay_pos.json` con una clave
 por vista; el formato viejo `{x,y}` sigue valiendo para la clasificación).
+
+**El nombre de la serie sale de `series.json`, no del SDK.** iRacing solo
+publica `WeekendInfo.SeriesID` (un número); el nombre no viaja en la
+telemetría. Como la línea roja es no inventar, la franja de arriba del
+overlay enseña el nombre si el ID está en `series.json` (versionado, una
+entrada por serie: `{"447": "GT3 Regional Europe"}`) y si no dice
+"Serie 447 (ponle nombre en series.json)" y lo canta en
+`sesiones/overlay.log` en la primera foto. Los incidentes por coche vienen de
+`DriverInfo.Drivers[].CurDriverIncidentCount` (`CarState.incidents`, columna
+INC; ámbar ≥ 8x, rojo ≥ 12x). Boceto al día en Pencil: frame "Overlay v2 —
+clasificación + relative (en juego)".
 
 **Los tests congelan lo que ganó la carrera, y por eso van SIEMPRE primero.**
 Antes de tocar nada del core se fotografía el comportamiento actual (`golden`) y
@@ -403,7 +420,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 146 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 151 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
@@ -505,7 +522,9 @@ muchas series) y quiere meter LMP3/LMP2/Hypercar; iRacing ya va en ventana sin
 bordes.
 
 **Overlay: clasificación validada en carrera (ago-2026, "me encanta"); relative
-y estética nueva sin estrenar.** Tras la carrera Sergio pidió (1) un relative
+estrenado ("a priori todo bien") y ajustado con su feedback: segundos por
+`CarIdxEstTime`, cabecera sin el chip "RELATIVE", incidentes, franja de serie
+(`series.json`). Falta ver esa segunda ronda en el PC.** Tras la carrera Sergio pidió (1) un relative
 respecto a él, (2) el orden en vivo (ver decisiones) y (3) la estética de
 RaceLab/estilo tarjetas: cada clase en su tarjeta grafito con cabecera
 (chip de clase, coches, vueltas, tiempo, temperaturas, SoF), chip de

@@ -377,3 +377,64 @@ def test_cada_panel_recuerda_su_posicion(tmp_path):
     f.write_text('{"x": 5, "y": 6}')
     assert ov.load_pos(f) == (5, 6)
     assert ov.load_pos(f, view="relative") is None
+
+
+# ---------------------------------------------------------------------------
+# El relative va en TIEMPO del SDK (CarIdxEstTime), no en distancia
+# ---------------------------------------------------------------------------
+
+
+def test_el_relative_usa_el_tiempo_estimado_del_sdk_si_lo_hay():
+    """Sergio en pista: 'en cada curva el relative baja 2-3 s y vuelve a
+    subir'. Convertir distancia a segundos con la mejor vuelta supone
+    velocidad constante: 100 m en recta son 1.4 s y en una horquilla 6.
+    CarIdxEstTime ya es tiempo hasta ese punto de la pista (por la vuelta
+    rapida de cada coche): la diferencia es el relative de verdad."""
+    snap = _snap([
+        _car(0, 1, "Delante", 1, 4000, 1, lap=10, lap_dist_pct=0.55, best=100.0, est_time=63.0),
+        _car(1, 2, "Yo", 1, 4000, 2, lap=10, lap_dist_pct=0.50, best=100.0, est_time=55.0, is_me=True),
+        _car(2, 3, "Detras", 1, 4000, 3, lap=10, lap_dist_pct=0.45, best=100.0, est_time=52.0),
+    ])
+    rows = st.build_relative(snap, around=2)
+    by = {r.car.number: r for r in rows}
+    assert by["1"].rel_s == pytest.approx(8.0)    # y no 5.0 (0.05 x 100)
+    assert by["3"].rel_s == pytest.approx(-3.0)   # y no -5.0
+
+
+def test_el_relative_con_est_time_da_la_vuelta_a_meta():
+    # Yo al 98 %, el otro al 2 % de la vuelta siguiente: 4 s por delante,
+    # aunque su EstTime (2 s) sea menor que el mio (97 s).
+    snap = _snap([
+        _car(0, 1, "Delante", 1, 4000, 1, lap=11, lap_dist_pct=0.02, best=100.0, est_time=2.0),
+        _car(1, 2, "Yo", 1, 4000, 2, lap=10, lap_dist_pct=0.98, best=100.0, est_time=97.0, is_me=True),
+        _car(2, 3, "Detras", 1, 4000, 3, lap=10, lap_dist_pct=0.94, best=100.0, est_time=93.0),
+    ])
+    rows = st.build_relative(snap, around=2)
+    by = {r.car.number: r for r in rows}
+    assert by["1"].rel_s == pytest.approx(5.0)
+    assert by["3"].rel_s == pytest.approx(-4.0)
+    assert [r.car.number for r in rows] == ["1", "2", "3"]
+
+
+def test_sin_est_time_el_relative_cae_a_distancia():
+    # Grabaciones viejas (est_time = 0 en todos): sigue valiendo lo de antes.
+    rows = st.build_relative(_rel_snap(), around=2)
+    assert rows[0].rel_s == pytest.approx(6.0)
+
+
+def test_los_incidentes_y_la_serie_viajan_en_la_foto():
+    snap = _snap([_car(0, 1, "A", 1, 4000, 1, incidents=7, is_me=True)], series_id=447)
+    back = SessionSnapshot.from_json(snap.to_json())
+    assert back.cars[0].incidents == 7 and back.series_id == 447
+
+
+def test_el_nombre_de_la_serie_sale_de_un_fichero_local(tmp_path):
+    # El SDK solo da SeriesID (numero): el nombre lo pone un series.json que
+    # se rellena una vez por serie. Sin entrada, None: el overlay lo canta.
+    f = tmp_path / "series.json"
+    assert st.series_name(447, f) is None
+    f.write_text('{"447": "GT3 Regional Europe"}', encoding="utf-8")
+    assert st.series_name(447, f) == "GT3 Regional Europe"
+    assert st.series_name(0, f) is None
+    f.write_text("{basura")
+    assert st.series_name(447, f) is None

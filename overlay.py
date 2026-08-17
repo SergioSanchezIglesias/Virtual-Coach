@@ -111,8 +111,9 @@ GAPX = 8
 CARD_GAP = 6
 H_HDR, H_ROW, H_MORE = 28, 24, 16
 R_CARD = 8
+H_TITLE = 22  # franja de arriba: serie, sesion, temperaturas
 COLS = [("POS", 22, "w"), ("#", 34, "w"), ("PILOTO", 112, "w"),
-        ("LIC", 46, "w"), ("iR", 40, "e"), ("GAP", 50, "e"), ("INT", 46, "e"),
+        ("LIC", 46, "w"), ("iR", 40, "e"), ("INC", 28, "e"), ("GAP", 50, "e"), ("INT", 46, "e"),
         ("ÚLTIMA", 68, "e"), ("MEJOR", 68, "e")]
 REL_COLS = [("POS", 22, "w"), ("#", 34, "w"), ("PILOTO", 112, "w"),
             ("CLASE", 44, "w"), ("LIC", 46, "w"), ("iR", 40, "e"), ("REL", 52, "e")]
@@ -379,18 +380,43 @@ class StandingsPanel(Panel):
         s = self.s
         c = self.canvas
         rows_by_block = [st.visible_rows(b, self.top, self.around) for b in blocks]
-        height = sum(
+        height = H_TITLE + CARD_GAP + sum(
             H_HDR + H_ROW * len(r) + (H_MORE if len(r) < b.n else 0)
             for b, r in zip(blocks, rows_by_block)
         ) + CARD_GAP * max(0, len(blocks) - 1)
         c.config(width=self.w * s, height=max(height, H_HDR) * s)
         c.delete("all")
-        y = 0.0
+        y = self._title(snap) + CARD_GAP * s
         self._n_blocks = len(blocks)
         for i, (b, rows) in enumerate(zip(blocks, rows_by_block)):
             self._block_index = i
-            y = self._class(snap, b, rows, self._class_color(b.class_name, i), y, first=(i == 0))
+            y = self._class(snap, b, rows, self._class_color(b.class_name, i), y)
             y += CARD_GAP * s
+
+    def _title(self, snap: SessionSnapshot) -> float:
+        """Serie (de series.json), tipo de sesion y temperaturas."""
+        s = self.s
+        h = H_TITLE * s
+        self._card(0, 0, self.w * s, h)
+        cy = h / 2
+        kind = {"Race": "Carrera", "Practice": "Práctica", "Open Qualify": "Clasificación",
+                "Lone Qualify": "Clasificación", "Warmup": "Warmup"}.get(snap.session_type, snap.session_type)
+        serie = st.series_name(snap.series_id)
+        if serie:
+            self._text(PAD * s, cy, serie, F_SMALL, "bold", TEXT)
+            x = PAD * s + (len(serie) * 6.6 + 10) * s
+        elif snap.series_id:
+            # Sin nombre no se inventa: se dice el ID para que se anada.
+            self._text(PAD * s, cy, f"Serie {snap.series_id} (ponle nombre en series.json)",
+                       F_SMALL, fill=TEXT_DIM)
+            x = PAD * s + 250 * s
+        else:
+            x = PAD * s
+        self._text(x, cy, kind, F_SMALL, "bold", TEXT_DIM)
+        if snap.air_temp is not None and snap.track_temp is not None:
+            self._text((self.w - PAD) * s, cy, f"aire {snap.air_temp:.0f}°  ·  pista {snap.track_temp:.0f}°",
+                       F_SMALL, fill=TEXT_DIM, anchor="e")
+        return h
 
     def _class_label(self, b: st.ClassBlock) -> str:
         """El nombre de la clase, sin inventar: si iRacing no lo da, sin chip
@@ -401,7 +427,7 @@ class StandingsPanel(Panel):
             return ""
         return f"Clase {chr(ord('A') + self._block_index)}"
 
-    def _class(self, snap, b: st.ClassBlock, rows, color: str, y: float, first: bool) -> float:
+    def _class(self, snap, b: st.ClassBlock, rows, color: str, y: float) -> float:
         s = self.s
         c = self.canvas
         card_h = H_HDR + H_ROW * len(rows) + (H_MORE if len(rows) < b.n else 0)
@@ -411,12 +437,7 @@ class StandingsPanel(Panel):
         x = PAD * s
         name = self._class_label(b)
         if name:
-            x += self._chip(x, cy, name, color, size=F_TINY + 2, h=18) + 8 * s
-        if first:
-            kind = {"Race": "R", "Practice": "P", "Open Qualify": "Q", "Lone Qualify": "Q",
-                    "Warmup": "W"}.get(snap.session_type, snap.session_type[:1].upper())
-            self._text(x, cy, kind, F_ROW, "bold", TEXT_DIM)
-            x += 18 * s
+            x += self._chip(x, cy, name, color, size=F_TINY + 2, h=18) + 10 * s
         self._text(x, cy, f"{b.n}", F_ROW, "bold")
         self._text(x + 8 * s + len(str(b.n)) * 7.5 * s, cy, "coches", F_SMALL, fill=TEXT_DIM)
         x += 62 * s
@@ -428,10 +449,6 @@ class StandingsPanel(Panel):
         m, sec = divmod(max(0, int(snap.time_remain)), 60)
         remain = f"{m}:{sec:02d}" if snap.time_remain < 36000 else "—"
         self._text(x, cy, remain, F_ROW, "bold", mono=True)
-        x += 62 * s
-        if first and snap.air_temp is not None and snap.track_temp is not None:
-            self._text(x, cy, f"{snap.air_temp:.0f}° · pista {snap.track_temp:.0f}°",
-                       F_SMALL, fill=TEXT_DIM)
         xr = (self.w - PAD) * s
         if b.is_mine:
             row = next((r for r in b.rows if r.is_me), None)
@@ -461,23 +478,27 @@ class StandingsPanel(Panel):
         self._ident(cols, cy, car, str(r.pos), ACCENT if me else TEXT, me)
         (_, _, x1, _) = cols[4]
         self._text(x1, cy, st.fmt_ir(car.irating), F_SMALL, "bold", TEXT_DIM, mono=True, anchor="e")
-        (_, x0, x1, _) = cols[5]
+        (_, _, x1, _) = cols[5]
+        inc_col = BRAKE if car.incidents >= 12 else (VOICE if car.incidents >= 8 else TEXT_DIM)
+        self._text(x1, cy, f"{car.incidents}x", F_SMALL, "bold" if me else "normal",
+                   inc_col, mono=True, anchor="e")
+        (_, x0, x1, _) = cols[6]
         if car.on_pit_road:
             self._chip(x0, cy, "PIT", TEAL, w=(x1 - x0) / s)
         elif r.pos == 1:
             self._text(x1, cy, "GAP", F_TINY, "bold", TEXT_FAINT, mono=True, anchor="e")
         else:
             self._text(x1, cy, st.fmt_gap(r.gap, False, r.laps_down), F_ROW, mono=True, anchor="e")
-        (_, _, x1, _) = cols[6]
+        (_, _, x1, _) = cols[7]
         if r.pos == 1:
             self._text(x1, cy, "INT", F_TINY, "bold", TEXT_FAINT, mono=True, anchor="e")
         else:
             self._text(x1, cy, st.fmt_gap(r.interval), F_SMALL, fill=TEXT_DIM, mono=True, anchor="e")
-        (_, _, x1, _) = cols[7]
+        (_, _, x1, _) = cols[8]
         pb = car.last_lap > 0 and car.best_lap > 0 and abs(car.last_lap - car.best_lap) < 1e-3
         self._text(x1, cy, st.fmt_lap(car.last_lap), F_ROW,
                    fill=ACCENT if pb else TEXT, mono=True, anchor="e")
-        (_, _, x1, _) = cols[8]
+        (_, _, x1, _) = cols[9]
         self._text(x1, cy, st.fmt_lap(car.best_lap), F_ROW,
                    fill=MANAGE if r.fastest else TEXT_DIM, mono=True, anchor="e")
 
@@ -509,20 +530,22 @@ class RelativePanel(Panel):
         self._card(0, 0, self.w * s, height * s, hdr_h=H_HDR * s)
         cy = H_HDR * s / 2
         x = PAD * s
-        x += self._chip(x, cy, "RELATIVE", TEXT_DIM, size=F_TINY + 2, h=18) + 10 * s
         me = snap.me
         mine = next((b for b in blocks if b.is_mine), None)
         if me and mine:
             my = next((r for r in mine.rows if r.is_me), None)
+            if mine.class_name:
+                x += self._chip(x, cy, mine.class_name[:10],
+                                self._class_color(mine.class_name, class_index.get(mine.class_id, 0)),
+                                size=F_TINY + 2, h=18) + 10 * s
             if my is not None:
                 self._text(x, cy, f"P{my.pos}", F_ROW, "bold", ACCENT, mono=True)
-                x += 34 * s
+                x += (len(str(my.pos)) * 8 + 14) * s
                 self._text(x, cy, f"de {mine.n}", F_SMALL, fill=TEXT_DIM)
-                x += 44 * s
-                if mine.class_name:
-                    x += self._chip(x, cy, mine.class_name[:10],
-                                    self._class_color(mine.class_name, class_index.get(mine.class_id, 0)),
-                                    size=F_TINY + 2, h=18) + 8 * s
+                x += 46 * s
+            self._text(x, cy, f"{me.incidents}x", F_ROW, "bold",
+                       BRAKE if me.incidents >= 12 else (VOICE if me.incidents >= 8 else TEXT_DIM),
+                       mono=True)
         if snap.laps_total:
             lap_txt = f"Laps {snap.laps_done + 1} / {snap.laps_total}"
         else:
@@ -586,6 +609,9 @@ def _feed(source, feed: Feed, recorder: SessionRecorder | None) -> None:
             n += 1
             if n == 1:
                 print(f"[overlay] primera foto: {len(snap.cars)} coches, sesion {snap.session_type}", flush=True)
+                if snap.series_id and not st.series_name(snap.series_id):
+                    print(f"[overlay] serie {snap.series_id} sin nombre: anadela a series.json "
+                          f"({{\"{snap.series_id}\": \"Nombre de la serie\"}})", flush=True)
         feed.set_status("Fin de la grabación")
     except BaseException as exc:  # que el hilo no muera en silencio
         print(f"[overlay] fuente parada: {type(exc).__name__}: {exc}", flush=True)

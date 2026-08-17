@@ -254,6 +254,12 @@ class CarState:
     # Con defecto: se anadio despues de grabar sesiones, y un JSONL viejo
     # tiene que seguir cargando. "A 3.45" tal cual lo da el SDK (LicString).
     license: str = ""
+    incidents: int = 0  # CurDriverIncidentCount (x)
+    # CarIdxEstTime: segundos hasta este punto de la pista segun la vuelta
+    # rapida de ese coche. Es lo que hace el relative en TIEMPO de verdad
+    # (la distancia x mejor vuelta supone velocidad constante y baila en
+    # cada curva). 0 = no se sabe (JSONL viejo).
+    est_time: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -270,6 +276,7 @@ class SessionSnapshot:
     # Con defecto por la misma razon que CarState.license. None = no se sabe.
     air_temp: float | None = None  # grados C
     track_temp: float | None = None
+    series_id: int = 0  # WeekendInfo.SeriesID; el SDK NO da el nombre
 
     def to_json(self) -> str:
         d = asdict(self)
@@ -421,6 +428,12 @@ class IRacingSessionSource(SessionSource):
             return default
         return default if v is None else v
 
+    def _series_id(self) -> int:
+        try:
+            return int((self.ir["WeekendInfo"] or {}).get("SeriesID") or 0)
+        except Exception:
+            return 0
+
     def _scalar(self, name) -> float | None:
         try:
             v = self.ir[name]
@@ -464,6 +477,8 @@ class IRacingSessionSource(SessionSource):
                     in_world=surface != -1 or lap > 0,
                     is_me=idx == self._my_idx,
                     license=str(d.get("LicString") or ""),
+                    incidents=int(d.get("CurDriverIncidentCount") or 0),
+                    est_time=float(self._read("CarIdxEstTime", idx, 0.0)),
                 )
                 cars.append(car)
                 if car.pos == 1:
@@ -478,6 +493,7 @@ class IRacingSessionSource(SessionSource):
                 cars=tuple(cars),
                 air_temp=self._scalar("AirTemp"),
                 track_temp=self._scalar("TrackTempCrew"),
+                series_id=self._series_id(),
             )
         finally:
             self.ir.unfreeze_var_buffer_latest()

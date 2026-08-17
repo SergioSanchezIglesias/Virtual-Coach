@@ -14,10 +14,16 @@ los cambios es cero: lo que unos ganan lo pierden otros.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
+from pathlib import Path
 
 from source import CarState, SessionSnapshot
+
+# El SDK da el ID de la serie pero no su nombre: lo pone este fichero, una
+# entrada por serie ({"447": "GT3 Regional Europe"}). Se versiona.
+SERIES_FILE = Path(__file__).resolve().parent / "series.json"
 
 # La constante de la formula: 1600 / ln 2. Con ella, 1600 puntos de
 # diferencia son "el doble de probable ganar".
@@ -274,13 +280,35 @@ def build_relative(snap: SessionSnapshot, around: int = 3,
 
     def row(rel: float, c: CarState) -> RelRow:
         laps = round((_track_pos(c) - my_d) - rel)
-        return RelRow(car=c, rel_s=rel * lap_s, laps_diff=int(laps),
+        if me.est_time > 0 and c.est_time > 0:
+            # Tiempo del SDK: la diferencia, corregida de vuelta para que
+            # caiga del lado (delante/detras) que dice la distancia.
+            t = c.est_time - me.est_time
+            if rel > 0 and t < 0:
+                t += lap_s
+            elif rel <= 0 and t > 0:
+                t -= lap_s
+        else:
+            t = rel * lap_s
+        return RelRow(car=c, rel_s=t, laps_diff=int(laps),
                       class_pos=pos.get(c.idx, 0))
 
     rows = [row(rel, c) for rel, c in reversed(ahead[:around])]
     rows.append(RelRow(car=me, rel_s=0.0, laps_diff=0, class_pos=pos.get(me.idx, 0)))
     rows += [row(rel, c) for rel, c in behind[:around]]
     return rows
+
+
+def series_name(series_id: int, path: Path = SERIES_FILE) -> str | None:
+    """El nombre de la serie segun series.json, o None si no esta."""
+    if series_id <= 0:
+        return None
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+        name = d.get(str(series_id))
+    except (OSError, ValueError, AttributeError):
+        return None
+    return str(name) if name else None
 
 
 def visible_rows(block: ClassBlock, top: int = 3, around: int = 2) -> list[Row]:
