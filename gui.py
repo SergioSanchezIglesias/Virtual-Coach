@@ -234,9 +234,13 @@ class CoachGUI:
         self.t_voice.pack(fill="x", pady=(0, 16))
 
         self._section(parent, "QUE QUIERES VER")
+        # Interruptor VIVO: enciende y apaga el overlay al momento, sin
+        # necesitar referencia ni pulsar Empezar. La clasificacion sirve
+        # igual en una carrera sin coach (o sin CSV de ese circuito).
         self.t_overlay = ToggleRow(parent, "Clasificacion en pantalla",
-                                   "tabla por clases con el iRating estimado, encima del juego",
-                                   LIFT, value=True)
+                                   "tabla por clases con el iRating estimado, encima del juego "
+                                   "(va aparte del coach: enciende al momento)",
+                                   LIFT, value=False, command=self._toggle_overlay)
         self.t_overlay.pack(fill="x", pady=(0, 16))
 
     def _build_actions(self, parent) -> None:
@@ -284,8 +288,11 @@ class CoachGUI:
         self.chip.configure(text=f"  ●  {text}  ", text_color=color, fg_color=bg)
 
     def _set_controls_enabled(self, on: bool) -> None:
-        """Rodando no se toca nada: los flags ya viajaron con el proceso."""
-        for t in (self.t_beeps, self.t_voice, self.t_overlay):
+        """Rodando no se toca nada: los flags ya viajaron con el proceso.
+
+        El overlay queda fuera: es un proceso aparte con su propio interruptor
+        y se puede encender o apagar en cualquier momento."""
+        for t in (self.t_beeps, self.t_voice):
             t.set_enabled(on)
         self.pick_btn.configure(state="normal" if on else "disabled")
 
@@ -386,8 +393,6 @@ class CoachGUI:
         # Su salida se lee en un hilo y se vuelca al registro con root.after,
         # que es la unica forma segura de tocar widgets desde otro hilo en Tk.
         threading.Thread(target=self._pump_output, daemon=True).start()
-        if self.t_overlay.get():
-            self._start_overlay()
 
         self.start_btn.configure(state="disabled", text="Rodando…",
                                  fg_color=SURFACE, text_color=FAINT)
@@ -402,8 +407,16 @@ class CoachGUI:
             self.root.after(0, self.log, line.rstrip())
         self.root.after(0, self._coach_ended)
 
+    def _toggle_overlay(self) -> None:
+        if self.t_overlay.get():
+            self._start_overlay()
+        else:
+            self._stop_overlay()
+            self.log("▦  Overlay cerrado.", "dim")
+
     def _start_overlay(self) -> None:
-        """El overlay va como proceso aparte, igual que el coach.
+        """El overlay va como proceso aparte, igual que el coach — e
+        independiente de el: no necesita referencia ni que el coach ruede.
 
         Cada sesion se graba sola en sesiones/ (JSONL de fotos de la sesion):
         es lo que permite reproducir una carrera en el Mac y afinar el overlay
@@ -420,13 +433,24 @@ class CoachGUI:
             cmd, stdout=self._overlay_log, stderr=subprocess.STDOUT,
             creationflags=CREATE_NO_WINDOW,
         )
-        self.log("▦  Overlay de clasificacion en pantalla (Esc sobre el, o Parar, lo cierra).", "lift")
+        self.log("▦  Overlay de clasificacion en pantalla (Esc sobre el, o el interruptor, lo cierra).", "lift")
         self.log(f"   graba en {sesiones / (stamp + '.jsonl')}; log en sesiones/overlay.log", "dim")
         self.root.after(3000, self._check_overlay)
 
     def _check_overlay(self) -> None:
         p = self.overlay_proc
-        if p is not None and p.poll() is not None:
+        if p is None:
+            return
+        if p.poll() is None:
+            self.root.after(2000, self._check_overlay)  # seguir vigilando
+            return
+        # Se cerro por su cuenta (Esc sobre el, o un fallo): el interruptor
+        # tiene que reflejarlo, si no quedaria encendido sin overlay detras.
+        self._stop_overlay()
+        self.t_overlay.var.set(False)
+        if p.returncode == 0:
+            self.log("▦  Overlay cerrado.", "dim")
+        else:
             self.log(f"[!] El overlay se ha cerrado solo (codigo {p.returncode}). "
                      "Mira sesiones/overlay.log.", "brake")
 
@@ -440,13 +464,11 @@ class CoachGUI:
             self._overlay_log = None
 
     def stop_coach(self) -> None:
-        self._stop_overlay()
         if self.coach_proc is not None and self.coach_proc.poll() is None:
             self.coach_proc.terminate()  # el SO libera el audio al morir el proceso
 
     def _coach_ended(self) -> None:
         self.coach_proc = None
-        self._stop_overlay()
         self.log("■  Coach detenido.", "dim")
         self.start_btn.configure(state="normal" if self.reference else "disabled",
                                  text="▶   Empezar", fg_color=ACCENT, text_color=BG)

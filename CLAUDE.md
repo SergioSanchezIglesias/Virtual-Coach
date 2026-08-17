@@ -479,7 +479,11 @@ bordes.
 
 **Overlay: implementado y estrenado en práctica** (`overlay.py`,
 `standings.py`, segundo canal en `source.py`, toggle en la GUI, `app.py
-overlay`). Boceto en Pencil (frame "Overlay — clasificación (en juego)" en el
+overlay`). **El interruptor de la GUI es VIVO e independiente del coach**
+(ago-2026): encenderlo arranca el overlay al momento sin necesitar CSV ni
+pulsar Empezar, apagarlo lo cierra, y si el overlay muere solo (Esc o fallo)
+el interruptor se apaga. Empezar/Parar gobiernan solo el coach: la
+clasificación sirve igual en una carrera sin referencia de ese circuito. Boceto en Pencil (frame "Overlay — clasificación (en juego)" en el
 `.pen` de la GUI). Lo que enseñó el estreno: el SDK leyó la sesión a la
 primera (20 coches), la IA viene con IRating 0/1 (ya no divide por cero),
 `CarIdxF2Time` NO sirve de gap (solo cambia en los puntos de control; en
