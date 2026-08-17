@@ -29,6 +29,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from tkinter import filedialog
 
@@ -209,15 +210,22 @@ class CoachGUI:
         self.csv: Path | None = None         # CSV de referencia elegido
         self.reference: Path | None = None   # JSON que genera analyzer
         self.coach_proc: subprocess.Popen | None = None
+        self.overlay_proc: subprocess.Popen | None = None
 
         root.title("Virtual Coach")
-        root.geometry("780x920")
-        root.minsize(720, 780)
+        # Alta como el contenido pero nunca mas que la pantalla: en un monitor
+        # de 1080p con barra de tareas se comia el registro y los botones.
+        alto = min(1000, root.winfo_screenheight() - 90)
+        root.geometry(f"780x{alto}")
+        root.minsize(720, 600)
         root.configure(fg_color=BG)
 
         self._build_header()
-        body = ctk.CTkFrame(root, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        # Con scroll: si la ventana no cabe entera, se llega a todo igual.
+        body = ctk.CTkScrollableFrame(root, fg_color="transparent",
+                                      scrollbar_button_color=SURFACE_2,
+                                      scrollbar_button_hover_color=LINE)
+        body.pack(fill="both", expand=True, padx=(20, 8), pady=(0, 20))
         self._build_reference(body)
         self._build_settings(body)
         self._build_fine(body)
@@ -394,6 +402,12 @@ class CoachGUI:
                                     MANAGE)
         self.t_training.pack(fill="x", padx=(26, 0))
 
+        self._section(parent, "QUE QUIERES VER")
+        self.t_overlay = ToggleRow(parent, "Clasificacion en pantalla",
+                                   "tabla por clases con el iRating estimado, encima del juego",
+                                   LIFT, value=True)
+        self.t_overlay.pack(fill="x", pady=(0, 16))
+
     def _build_actions(self, parent) -> None:
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", pady=(0, 16))
@@ -424,7 +438,7 @@ class CoachGUI:
                       font=ctk.CTkFont(size=11), command=self.clear_log).pack(side="right", padx=8)
 
         self.log_box = ctk.CTkTextbox(box, fg_color="#0A0D11", text_color=DIM, wrap="word",
-                                      border_width=0, font=(MONO, 12))
+                                      border_width=0, font=(MONO, 12), height=240)
         self.log_box.pack(fill="both", expand=True, padx=12, pady=10)
         for tag, color in (("brake", BRAKE), ("gas", ACCENT), ("lift", LIFT),
                            ("manage", MANAGE), ("voice", VOICE), ("dim", DIM),
@@ -452,6 +466,7 @@ class CoachGUI:
                   self.s_speed_tol, self.s_review):
             s.set_enabled(on)
         self.t_voice.set_enabled(on)
+        self.t_overlay.set_enabled(on)
         self.t_training.set_enabled(on and self.t_voice.get())
         self.pick_btn.configure(state="normal" if on else "disabled")
 
@@ -548,6 +563,8 @@ class CoachGUI:
         # Su salida se lee en un hilo y se vuelca al registro con root.after,
         # que es la unica forma segura de tocar widgets desde otro hilo en Tk.
         threading.Thread(target=self._pump_output, daemon=True).start()
+        if self.t_overlay.get():
+            self._start_overlay()
 
         self.start_btn.configure(state="disabled", text="Rodando…",
                                  fg_color=SURFACE, text_color=FAINT)
@@ -562,12 +579,51 @@ class CoachGUI:
             self.root.after(0, self.log, line.rstrip())
         self.root.after(0, self._coach_ended)
 
+    def _start_overlay(self) -> None:
+        """El overlay va como proceso aparte, igual que el coach.
+
+        Cada sesion se graba sola en sesiones/ (JSONL de fotos de la sesion):
+        es lo que permite reproducir una carrera en el Mac y afinar el overlay
+        sin el juego. Pesa poco (unas decenas de KB por minuto).
+        """
+        sesiones = HERE / "sesiones"
+        sesiones.mkdir(exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M")
+        cmd = _tool_cmd("overlay") + ["--record", str(sesiones / f"{stamp}.jsonl")]
+        # Su salida va a un log junto a las grabaciones: si el overlay no
+        # aparece, ahi esta el porque (con DEVNULL se moria en silencio).
+        self._overlay_log = open(sesiones / "overlay.log", "a", encoding="utf-8")
+        self.overlay_proc = subprocess.Popen(
+            cmd, stdout=self._overlay_log, stderr=subprocess.STDOUT,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        self.log("▦  Overlay de clasificacion en pantalla (Esc sobre el, o Parar, lo cierra).", "lift")
+        self.log(f"   graba en {sesiones / (stamp + '.jsonl')}; log en sesiones/overlay.log", "dim")
+        self.root.after(3000, self._check_overlay)
+
+    def _check_overlay(self) -> None:
+        p = self.overlay_proc
+        if p is not None and p.poll() is not None:
+            self.log(f"[!] El overlay se ha cerrado solo (codigo {p.returncode}). "
+                     "Mira sesiones/overlay.log.", "brake")
+
+    def _stop_overlay(self) -> None:
+        if self.overlay_proc is not None and self.overlay_proc.poll() is None:
+            self.overlay_proc.terminate()
+        self.overlay_proc = None
+        log = getattr(self, "_overlay_log", None)
+        if log is not None:
+            log.close()
+            self._overlay_log = None
+
     def stop_coach(self) -> None:
+        self._stop_overlay()
         if self.coach_proc is not None and self.coach_proc.poll() is None:
             self.coach_proc.terminate()  # el SO libera el audio al morir el proceso
 
     def _coach_ended(self) -> None:
         self.coach_proc = None
+        self._stop_overlay()
         self.log("■  Coach detenido.", "dim")
         self.start_btn.configure(state="normal" if self.reference else "disabled",
                                  text="▶   Empezar", fg_color=ACCENT, text_color=BG)
@@ -624,6 +680,7 @@ class CoachGUI:
         # No dejar un coach huerfano sonando tras cerrar la ventana.
         if self.coach_proc is not None and self.coach_proc.poll() is None:
             self.coach_proc.terminate()
+        self._stop_overlay()
         self.root.destroy()
 
 

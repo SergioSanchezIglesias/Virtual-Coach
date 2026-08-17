@@ -17,10 +17,12 @@ Trabajamos en español.
 | `coach.py` | bucle, anticipación, audio y voz | validado en pista (Hockenheim, Winton, Indianápolis) |
 | `gui.py` | ventana para elegir referencia y lanzar el coach | estrenada en pista (ago-2026) |
 | `review.py` | análisis post-vuelta con el ABS: por qué has ido lento | estrenado en pista: el canal de ABS del PC llega y diagnostica |
+| `standings.py` | clasificación por clases, SoF e iRating ESTIMADO (lógica pura) | estrenado en práctica; el gap es distancia en pista en vivo |
+| `overlay.py` | tabla de clasificación encima del juego (ventana sin bordes) | **estrenado en práctica** (ago-2026); falta validar en carrera online |
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba como fixture) | 116 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba como fixture) | 131 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -44,6 +46,15 @@ el simulador, y lo que abarataría un port futuro a Le Mans Ultimate.
 
 `ReplaySource` no es un mock: el CSV de Garage61 es una grabación del mismo
 flujo, a la misma frecuencia y en las mismas unidades que produce iRacing.
+
+**Hay un SEGUNDO canal en `source.py`: la sesión** (`SessionSnapshot`, todos
+los coches a 2 Hz), para el overlay de clasificación. Mismo patrón: iRacing en
+vivo (`IRacingSessionSource`), grabación a JSONL (`SessionRecorder`) y replay
+(`ReplaySessionSource`). El CSV de Garage61 no sirve aquí (solo trae tu coche),
+por eso **la GUI graba cada sesión sola en `sesiones/`** (ignorado por git):
+esa grabación es el fixture con el que se afina el overlay en el Mac.
+`tests/data/demo_sesion.jsonl` es una carrera SINTÉTICA para arrancar; en
+cuanto haya una real grabada en el PC, sustituirla.
 
 ## Decisiones tomadas (no deshacer sin hablarlo)
 
@@ -299,6 +310,16 @@ correcciones. Es la garantía contra el coach cansino.
 distracción posible y además llega tarde: cuando lo oyes, ya te has pasado. El
 diagnóstico se cierra al cruzar meta, que es cuando el dato sigue fresco.
 
+**El iRating del overlay es una ESTIMACIÓN y la pantalla lo dice (`≈`).**
+iRacing no publica el iRating en vivo, solo al acabar la sesión; lo que
+enseñan todos los overlays es la fórmula reconstruida por la comunidad (tipo
+Elo con `BR1 = 1600/ln 2`, suma cero dentro de cada clase, el tapado gana más
+que el favorito). Es fiel pero es una predicción: presentarla como dato sería
+información falsa. Lo vigilan los tests de `test_standings.py` (suma cero,
+monotonía, favorito vs tapado). El overlay va como proceso aparte igual que el
+coach, con Tk puro (sin customtkinter) porque necesita `-transparentcolor`, e
+**iRacing tiene que ir en ventana sin bordes** para que se vea encima.
+
 **Los tests congelan lo que ganó la carrera, y por eso van SIEMPRE primero.**
 Antes de tocar nada del core se fotografía el comportamiento actual (`golden`) y
 solo entonces se cambia. Si se escriben después, se congela el comportamiento
@@ -328,7 +349,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 116 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 131 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
@@ -414,21 +435,68 @@ Hecho tras el podio (en `main`, con la red de tests puesta antes de tocar nada):
 ticks ascendentes, `--voice-volume`, la GUI nueva **estrenada en pista**, y el
 paquete de ago-2026 tras el A/B de Indianápolis: la compensación de latencia
 revertida con datos, el umbral de freno a 0.20, el rearme por evento, el
-`coasting` aplicado y el registro de la GUI arreglado (flush + colores). La red
-va por 116 tests.
+`coasting` aplicado y el registro de la GUI arreglado (flush + colores).
 
 Decisión cerrada (ago-2026): el ritmo de la cuenta atrás queda en **0.75**,
 el defecto de la GUI, que es con el que Sergio lleva rodando y el que
 prefiere. El 0.5 de la carrera pasa a ser historia, no referencia.
 
-En marcha: **rediseño de la GUI**. Hay mockup en Pencil con tres estados (sin
-referencia / listo / en pista): steppers `[−] valor [+]` para lo que hoy solo se
-toca por CLI (`--lead`, `--countdown`, `--countdown-interval`, `--voice-volume`,
-y en un bloque "ajuste fino" plegado `--margin`, `--speed-tol`, `--review-top`),
-y color como lenguaje del dominio (verde gas, rojo freno, morado gestión, ámbar
-voz), el mismo en los avisos y en el registro. **El "modo prueba" (replay) sale
-de la ventana**; sigue en el CLI. Primer paso ya hecho: la migración de Python
-de arriba, sin la cual se seguiría diseñando a ciegas.
+### En marcha: rama `feat/overlay-clasificacion` (ago-2026)
+
+Dos features nuevas acordadas, en este orden: (1) **overlay de clasificación**
+con iRating estimado encima del juego, (2) **"ingeniero de pista"** que
+analiza tus tandas de práctica y recomienda cambios de setup adaptados a tu
+conducción. Contexto: Sergio corre GT4, GT3 y Porsche Cup (setup fijo en
+muchas series) y quiere meter LMP3/LMP2/Hypercar; iRacing ya va en ventana sin
+bordes.
+
+**Overlay: implementado y estrenado en práctica** (`overlay.py`,
+`standings.py`, segundo canal en `source.py`, toggle en la GUI, `app.py
+overlay`). Boceto en Pencil (frame "Overlay — clasificación (en juego)" en el
+`.pen` de la GUI). Lo que enseñó el estreno: el SDK leyó la sesión a la
+primera (20 coches), la IA viene con IRating 0/1 (ya no divide por cero),
+`CarIdxF2Time` NO sirve de gap (solo cambia en los puntos de control; en
+práctica es un delta de mejor vuelta) → el gap es distancia en pista en vivo,
+y el panel se ha compactado dos veces porque tapaba pista. Pasos que quedan:
+
+1. **Validar en una carrera online real** (no con IA): iRatings de verdad,
+   Δ≈ con sentido, gaps en carrera, doblados (`+1 L`), coches en boxes (`PIT`),
+   varias clases. Guardar el `sesiones/*.jsonl` de esa carrera y **sustituir el
+   fixture sintético** `tests/data/demo_sesion.jsonl` por uno real recortado.
+2. **Contrastar el Δ≈ de iRating con el que iRacing publique al acabar** esa
+   carrera. Si se desvía más de unos pocos puntos, revisar la fórmula
+   (`standings.irating_changes`) o cómo se cuentan los que puntúan
+   (`in_world`, DNS, desconectados).
+3. Ajustes de la GUI que faltan para el overlay: exponer `--scale`, `--top`,
+   `--around` y la posición como ajustes (hoy solo por CLI; la GUI lanza los
+   defectos), y recordar la posición donde se dejó arrastrado.
+4. Fusionar a `main` y **reconstruir el `.exe` en Windows** (pendiente
+   también por los cambios de ago-2026 en el coach). El spec no cambia:
+   `overlay` entra por `app.py`.
+
+**Ingeniero de pista: sin empezar.** Plan acordado, en dos mitades y con un
+paso 0 común (la línea roja sigue: no dar información falsa, así que primero
+diagnóstico medido y solo después recomendación):
+
+- **Paso 0 — grabador de tu telemetría de chasis por tanda.** Los canales que
+  hoy no lee `IRacingSource`: volante (`SteeringWheelAngle`), `YawRate`,
+  `LatAccel`/`LongAccel`, temperaturas de neumático por tercios
+  (`LFtempCL/CM/CR`…), presiones fría/caliente, `RideHeight` y recorrido de
+  amortiguador por rueda, reparto de frenada, y el `CarSetup` del YAML una vez
+  por tanda. A un fichero por tanda (out-lap a in-lap), reproducible en el Mac
+  como el resto. Sirve además para el "dónde pierdes tiempo" del backlog.
+- **2a — diagnóstico por zona de frenada** (la numeración que ya usa
+  `review.py`): sub/sobreviraje en entrada, medio y salida (volante frente a
+  `YawRate` y velocidad), presiones y temperaturas fuera de ventana, qué eje
+  bloquea (ABS + reparto). Solo describe, con datos medidos. Debe leer del
+  `CarSetup` qué está bloqueado (setup fijo) para no proponer tocar lo que no
+  se puede tocar. Sergio pasará capturas de todos los campos del garaje.
+- **2b — recomendación: UN cambio por tanda**, de la lista de campos del
+  coche, y en la tanda siguiente medir si el síntoma mejoró o empeoró. Así el
+  sistema se adapta al piloto en vez de recitar una tabla síntoma→tornillo,
+  que cambia por coche, circuito y estilo. Con LMP2/Hypercar esto además evita
+  tocar cosas muy sensibles (ride heights, aero) sin evidencia. Lo que el SDK
+  NO permite: escribir el setup; el ingeniero recomienda, tú tocas.
 
 En rama aparte, pendientes de implementar y probar:
 
