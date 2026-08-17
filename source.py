@@ -435,7 +435,10 @@ class IRacingSessionSource(SessionSource):
                     number=str(d.get("CarNumber", "?")),
                     name=str(d.get("UserName", "?")),
                     class_id=int(d.get("CarClassID", 0)),
-                    class_name=str(d.get("CarClassShortName") or d.get("CarScreenNameShort") or ""),
+                    # SOLO el nombre de la clase. Nada de caer al nombre del
+                    # coche: en un bloque de coches distintos saldria el del
+                    # lider (paso: "Acura" corriendo con un Ferrari).
+                    class_name=str(d.get("CarClassShortName") or ""),
                     irating=int(d.get("IRating", 0)),
                     class_pos=int(self._read("CarIdxClassPosition", idx)),
                     pos=int(self._read("CarIdxPosition", idx)),

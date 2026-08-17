@@ -191,7 +191,9 @@ class Overlay:
         self._rrect(0, 0, W * s, height * s, 6 * s, fill=BG, outline="#2A313A")
 
         y = self._header(snap, blocks)
+        self._n_blocks = len(blocks)
         for i, (b, rows) in enumerate(zip(blocks, rows_by_block)):
+            self._block_index = i
             y = self._class(b, rows, self._class_color(b, i), y)
 
     def _class_color(self, b: st.ClassBlock, i: int) -> str:
@@ -238,6 +240,15 @@ class Overlay:
             self._text(xr, cy, f"Tú · {st.fmt_ir(me.irating)}", F_ROW, fill=TEXT_DIM, anchor="e")
         return H_HDR * s
 
+    def _class_label(self, b: st.ClassBlock) -> str:
+        """El nombre de la clase, sin inventar: si iRacing no lo da, sin chip
+        (una sola clase) o 'Clase A/B/C' (varias)."""
+        if b.class_name:
+            return b.class_name[:14]
+        if self._n_blocks <= 1:
+            return ""
+        return f"Clase {chr(ord('A') + self._block_index)}"
+
     def _class(self, b: st.ClassBlock, rows, color: str, y: float) -> float:
         s = self.s
         c = self.canvas
@@ -246,11 +257,12 @@ class Overlay:
         c.create_rectangle(0, y, 3 * s, y + H_CLS * s, fill=color, outline="")
         cy = y + H_CLS * s / 2
         x = PAD * s
-        name = (b.class_name or f"Clase {b.class_id}")[:14]
-        w = 8 * s + len(name) * 6.5 * s
-        self._rrect(x, cy - 7 * s, x + w, cy + 7 * s, 3 * s, fill=color, outline="")
-        self._text(x + w / 2, cy, name, F_TINY + 1, "bold", BG, anchor="center")
-        x += w + 8 * s
+        name = self._class_label(b)
+        if name:
+            w = 8 * s + len(name) * 6.5 * s
+            self._rrect(x, cy - 7 * s, x + w, cy + 7 * s, 3 * s, fill=color, outline="")
+            self._text(x + w / 2, cy, name, F_TINY + 1, "bold", BG, anchor="center")
+            x += w + 8 * s
         self._text(x, cy, f"SoF {b.sof:.0f}", F_SMALL, "bold", TEXT_DIM)
         x += 66 * s
         self._text(x, cy, f"{b.n} coches", F_SMALL, fill=TEXT_FAINT)
