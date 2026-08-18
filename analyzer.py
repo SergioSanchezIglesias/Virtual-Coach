@@ -43,7 +43,7 @@ BRAKE_SLOW_DROP = 12.0  # ...cuenta igual si quita al menos estos km/h. Leccion
                         # suave si. Es la fisica la que separa una de otra, no
                         # el pico. Los toques de Winton (0.05-0.14, estabilizar
                         # el coche) no quitan velocidad y siguen fuera.
-COAST_MAX_S = 1.5       # tras soltar el freno, si el gas entra antes de esto
+COAST_MAX_S = 3.0       # tras soltar el freno, si el gas entra antes de esto
                         # el GAS suena donde el piloto lo pisa de verdad; solo
                         # una rodadura mas larga es "inercia" y se calla. Antes
                         # la ventana era 0.6 s fija: en Tertre Rouge (Le Mans)
@@ -51,6 +51,10 @@ COAST_MAX_S = 1.5       # tras soltar el freno, si el gas entra antes de esto
                         # tras un roce del freno, y se callaban dos avisos
                         # buenos. Tras la suelta ya no hay auto-blip que
                         # ensucie el gas, asi que ahi el acelerador si es fiable.
+                        # Subio de 1.5 a 3.0 por Rivazza (Imola, GT4): un piloto
+                        # rueda 1.7 s y acelera en el 69.0 %, EXACTAMENTE donde
+                        # el otro acelera arrastrando el freno. El GAS en el
+                        # punto real de gas nunca es informacion falsa.
 THROTTLE_ON = 0.20      # apertura de gas que cuenta como "vuelve a acelerar"
 MERGE_DIST = 40.0       # metros: eventos mas juntos que esto se fusionan
 MERGE_GAP = 15.0        # metros de pedal SUELTO entre dos apoyos de freno para
@@ -65,7 +69,12 @@ MERGE_GAP = 15.0        # metros de pedal SUELTO entre dos apoyos de freno para
 LIFT_FULL = 0.90        # gas considerado "pleno" del que se levanta
 LIFT_TARGET = 0.70      # tiene que caer al menos hasta aqui para contar
 LIFT_NO_BRAKE = 0.08    # si el freno supera esto, es una frenada, no un lift
-LIFT_MIN_DUR = 0.30     # segundos sostenido (descarta microblips del pie)
+LIFT_MIN_DUR = 0.60     # segundos bajo pleno (descarta blips del pie). Era
+                        # 0.30 y en Red Bull Ring colaban dos "lifts" de 0.3 y
+                        # 0.5 s con SUELTA->GAS a 0.25 s, sin perder velocidad
+                        # y sin que el otro piloto hiciera nada ahi. El lift
+                        # real mas corto en 13 vueltas (Winton validado, Hady,
+                        # Tim en Interlagos) dura 0.77-0.88 s.
 LIFT_RECOVER = 0.10     # cuanto sube el gas desde el valle para marcar el gas
 
 # Zonas de gestion: curvas rapidas encadenadas que se toman a GAS PARCIAL, sin

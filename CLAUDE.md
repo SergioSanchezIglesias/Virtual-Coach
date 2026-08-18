@@ -22,7 +22,7 @@ Trabajamos en español.
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba, VIR ×2, St. Pete, Indy-GT3 e Interlagos como fixtures) | 162 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba, VIR ×2, St. Pete, Indy-GT3, Interlagos, RBR e Imola como fixtures) | 166 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -158,7 +158,13 @@ pleno, coherente con la regla del gas en las frenadas. **Los lifts pegados
 fusionan**, igual que las frenadas: en las esses de VIR con el 296 el pie
 levanta a cero, medio gas, roza el pleno una décima y vuelve a medio gas — dos
 lifts a 34 m que sonaban SUELTA-GAS-SUELTA-GAS en 1,5 s. Lo vigila
-`test_dos_lifts_pegados_son_uno`; el lift de Winton no se mueve.
+`test_dos_lifts_pegados_son_uno`; el lift de Winton no se mueve. **Y un lift
+dura al menos `LIFT_MIN_DUR` = 0,6 s bajo pleno** (era 0,3): en Red Bull Ring
+colaban dos "lifts" de 0,3-0,5 s con SUELTA→GAS a 0,25 s, sin perder velocidad
+y sin que el otro piloto de la pareja hiciera nada ahí; el lift real más corto
+en 13 vueltas (Winton validado, Hady y Tim en Interlagos) dura 0,77-0,88 s. Lo
+vigilan `test_un_blip_de_gas_no_es_un_lift` y
+`test_red_bull_ring_no_tiene_lifts_de_un_cuarto_de_segundo` (`tests/data/rbr.csv`).
 
 **Toda frenada real avisa, por suave que sea; el umbral solo filtra roces.**
 `BRAKE_MIN_PEAK` ha bajado dos veces, siempre con datos: de 0.35 a 0.30 por la
@@ -218,15 +224,19 @@ Ahora `to_reference` lo omite y el analyzer avisa de la omisión al procesar.
 En Hockenheim, Winton e Indy no hay ninguna zona así (verificado): el caso es
 de circuito futuro. Lo vigila `test_una_zona_de_inercia_no_emite_aviso_de_gas`.
 **Matiz (ago-2026, auditoría de 6 vueltas de Jarno Koch, 296 GT3): "inercia"
-es solo la rodadura LARGA.** Si el gas entra en menos de `COAST_MAX_S` (1,5 s)
-tras la suelta, el GAS suena donde el pie lo pisa de verdad, no se calla. Antes
+es solo la rodadura LARGA.** Si el gas entra en menos de `COAST_MAX_S` (3 s;
+empezó en 1,5 y subió por Rivazza en Imola: Brad rueda 1,7 s y acelera en el
+69,0 %, exactamente donde acelera Nazim arrastrando el freno — el GAS en el
+punto real de gas nunca es información falsa) tras la suelta, el GAS suena
+donde el pie lo pisa de verdad, no se calla. Antes
 la ventana era 0,6 s fija y se callaban dos avisos buenos: Tertre Rouge (Le
 Mans, el gas a 0,68 s) y la curva 1 de St. Pete (el pedal toca cero, lo roza
 otra vez a 0,10 y acelera al soltarlo; el arreglo de Tsukuba no lo cubría
 porque ya había visto un cero). Tras la suelta ya no hay auto-blip, así que
 ahí el acelerador sí es fiable. Lo vigilan
 `test_una_inercia_corta_lleva_el_gas_donde_entra_de_verdad`,
-`test_una_inercia_larga_sigue_sin_gas`,
+`test_una_inercia_larga_sigue_sin_gas`, `test_una_rodadura_de_dos_segundos_lleva_gas`,
+`test_imola_avisa_gas_en_rivazza` (`tests/data/imola.csv`),
 `test_un_roce_al_freno_antes_del_gas_no_es_inercia` y
 `test_st_pete_avisa_gas_en_la_curva_1` (`tests/data/st_pete.csv`, quinto
 fixture).
@@ -471,7 +481,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 162 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 166 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
@@ -489,7 +499,7 @@ fichero y comparar. Tres capas:
   aviso que no se distingue de otro no sirve, y eso no se ve leyendo el código.
 
 Los CSV de `tests/data/` son **copias congeladas** de las dos vueltas
-validadas (más Tsukuba, VIR ×2, St. Pete, Indy-GT3 e Interlagos como fixtures no validados en pista), versionadas con una excepción en `.gitignore` (353 KB comprimidos).
+validadas (más Tsukuba, VIR ×2, St. Pete, Indy-GT3, Interlagos, RBR e Imola como fixtures no validados en pista), versionadas con una excepción en `.gitignore` (353 KB comprimidos).
 Son copias a propósito: los CSV de la raíz los sobrescribes al exportar de
 Garage61, y un fixture que cambia bajo los pies no congela nada.
 

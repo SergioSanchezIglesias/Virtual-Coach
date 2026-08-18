@@ -341,7 +341,7 @@ def _vuelta_sintetica(pico_freno: float, acelera_despues: bool = True):
     df.loc[150:283, "Throttle"] = 0.0        # levanta antes y durante la frenada
     df.loc[200:283, "Brake"] = pico_freno    # 84 muestras = 1.4 s de pedal
     if not acelera_despues:
-        df.loc[284:400, "Throttle"] = 0.0    # inercia larga tras la suelta
+        df.loc[284:499, "Throttle"] = 0.0    # inercia larga tras la suelta (3.6 s)
     return df
 
 
@@ -540,8 +540,32 @@ def test_una_inercia_corta_lleva_el_gas_donde_entra_de_verdad(analyzer_cfg):
 def test_una_inercia_larga_sigue_sin_gas(analyzer_cfg):
     """El piloto de VIR rueda 1-3.8 s sin gas en seis curvas: ahi el coach
     calla el GAS, y eso sigue siendo correcto."""
-    zones = a.detect_events(_vuelta_con_gas_tardio(2.5), 1000.0, analyzer_cfg)
-    assert zones[0]["coasting"], "una inercia de 2.5 s ya no se detecta"
+    zones = a.detect_events(_vuelta_con_gas_tardio(3.5), 1000.0, analyzer_cfg)
+    assert zones[0]["coasting"], "una inercia de 3.5 s ya no se detecta"
+
+
+def test_una_rodadura_de_dos_segundos_lleva_gas(analyzer_cfg):
+    """Rivazza (Imola, GT4): Brad suelta y rueda 1.7 s antes de acelerar en el
+    69.0 %, exactamente donde acelera Nazim arrastrando el freno. Con la
+    ventana en 1.5 s se callaba un GAS que dos pilotos ponen en el mismo sitio.
+    El GAS en el punto real de gas nunca es informacion falsa."""
+    zones = a.detect_events(_vuelta_con_gas_tardio(2.0), 1000.0, analyzer_cfg)
+    z = zones[0]
+    assert not z["coasting"], "2 s de rodadura se tomaron por inercia"
+    esperado = (284 + 120) / 600 * 0.99
+    assert abs(z["throttle_pos"] - esperado) < 6 / 600, z["throttle_pos"]
+
+
+def test_imola_avisa_gas_en_rivazza(analyzer_cfg):
+    from conftest import DATA
+
+    df = a.load_lap(str(DATA / "imola.csv"))
+    length = a.track_length_from_speed(df)
+    zones = a.detect_events(df, length, analyzer_cfg)
+    assert len(zones) == 8
+    riv = [z for z in zones if abs(z["brake_pos"] * 100 - 65.7) < 0.3][0]
+    assert not riv["coasting"], "Rivazza sigue muda"
+    assert 68.8 < riv["throttle_pos"] * 100 < 69.2, riv["throttle_pos"]
 
 
 def test_un_roce_al_freno_antes_del_gas_no_es_inercia(analyzer_cfg):
@@ -612,15 +636,15 @@ def _vuelta_con_dos_lifts_pegados():
         "Gear": np.full(n, 3, dtype=int),
     })
     df.loc[200:217, "Throttle"] = 0.0
-    df.loc[218:229, "Throttle"] = 0.65
-    df.loc[230:235, "Throttle"] = 0.92    # roza el pleno una decima
-    df.loc[236:300, "Throttle"] = 0.60
+    df.loc[218:245, "Throttle"] = 0.65
+    df.loc[246:251, "Throttle"] = 0.92    # roza el pleno una decima
+    df.loc[252:300, "Throttle"] = 0.60
     return df
 
 
 def test_dos_lifts_pegados_son_uno(analyzer_cfg):
     df = _vuelta_con_dos_lifts_pegados()
-    lifts = a.detect_lifts(df, analyzer_cfg, track_length=1000.0)
+    lifts = a.detect_lifts(df, analyzer_cfg, track_length=500.0)  # 27 m entre gas y suelta
     assert len(lifts) == 1, [(l["lift_pos"], l["gas_pos"]) for l in lifts]
     assert abs(lifts[0]["lift_pos"] - 199 / 600 * 0.99) < 3 / 600
     # El GAS es la vuelta del ultimo valle, no el roce del pleno de en medio.
@@ -692,3 +716,44 @@ def test_vir_gt4_hog_pen_es_una_sola_frenada(analyzer_cfg):
     assert len(zones) == 8, posiciones
     hog = [z for z in zones if abs(z["brake_pos"] * 100 - 83.6) < 0.3]
     assert len(hog) == 1 and not hog[0]["coasting"], posiciones
+
+
+# ---------------------------------------------------------------------------
+# Blips de gas (Red Bull Ring, dos pilotos, ago-2026)
+# ---------------------------------------------------------------------------
+
+
+def _vuelta_con_blip_de_gas(bajo_pleno_s: float):
+    """Gas pleno, una caida a 0.4 y vuelta: un blip del pie, no una curva."""
+    import pandas as pd
+
+    n = 600
+    df = pd.DataFrame({
+        "Speed": np.full(n, 40.0),
+        "LapDistPct": np.linspace(0.0, 0.99, n),
+        "Brake": np.zeros(n),
+        "Throttle": np.ones(n),
+        "Gear": np.full(n, 4, dtype=int),
+    })
+    k = int(bajo_pleno_s * 60)
+    df.loc[300:300 + k - 1, "Throttle"] = 0.4
+    return df
+
+
+def test_un_blip_de_gas_no_es_un_lift(analyzer_cfg):
+    """En Red Bull Ring salian dos "lifts" con SUELTA->GAS a 0.25 s y 0.3-0.5 s
+    bajo pleno, sin perder velocidad y sin que el otro piloto hiciera nada ahi.
+    El lift real mas corto medido (Winton validado, Hady, Tim) dura 0.77-0.88 s.
+    """
+    assert a.detect_lifts(_vuelta_con_blip_de_gas(0.45), analyzer_cfg, 1000.0) == []
+    assert len(a.detect_lifts(_vuelta_con_blip_de_gas(0.80), analyzer_cfg, 1000.0)) == 1
+
+
+def test_red_bull_ring_no_tiene_lifts_de_un_cuarto_de_segundo(analyzer_cfg):
+    from conftest import DATA
+
+    df = a.load_lap(str(DATA / "rbr.csv"))
+    length = a.track_length_from_speed(df)
+    assert len(a.detect_events(df, length, analyzer_cfg)) == 7
+    lifts = a.detect_lifts(df, analyzer_cfg, length)
+    assert lifts == [], [round(l["lift_pos"] * 100, 2) for l in lifts]
