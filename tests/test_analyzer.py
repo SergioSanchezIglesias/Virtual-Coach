@@ -20,7 +20,7 @@ def analizar(circuito: str, cfg) -> dict:
     track_length = a.track_length_from_speed(df)
 
     zones = a.detect_events(df, track_length, cfg)
-    lifts = a.detect_lifts(df, cfg)
+    lifts = a.detect_lifts(df, cfg, track_length)
     taken = ([z["brake_pos"] for z in zones]
              + [z["throttle_pos"] for z in zones]
              + [lift["lift_pos"] for lift in lifts])
@@ -497,3 +497,124 @@ def test_vir_detecta_las_trece_frenadas(analyzer_cfg):
         )
     # La frenada 8 (43.6 %) suena donde el pie aterriza, no 13 m despues.
     assert any(abs(p - 43.6) < 0.1 for p in posiciones), posiciones
+
+
+# ---------------------------------------------------------------------------
+# Auditoria de ago-2026 sobre seis vueltas de Jarno Koch (296 GT3)
+# ---------------------------------------------------------------------------
+#
+# Todos los pulsos de freno reales se detectaban; los fallos estaban en los
+# bordes: (1) un GAS mudo por "inercia" cuando el gas entra 0.6-0.7 s tras
+# la suelta (Tertre Rouge en Le Mans) o cuando el pie roza el freno otra vez
+# antes de acelerar (curva 1 de St. Pete); (2) un freno sostenido bajo el
+# umbral de pico que quita 16 km/h y se tiraba (Indy, 58 %: la curva que
+# Sergio echo en falta); (3) dos lifts a 40 m que sonaban SUELTA-GAS-SUELTA-GAS
+# en 1.5 s (esses de VIR).
+
+
+def _vuelta_con_gas_tardio(retraso_s: float):
+    """Frenada limpia, el pedal a cero, y el gas entra `retraso_s` despues."""
+    df = _vuelta_sintetica(0.8, acelera_despues=False)
+    df.loc[284 + int(retraso_s * 60):, "Throttle"] = 1.0
+    return df
+
+
+def test_una_inercia_corta_lleva_el_gas_donde_entra_de_verdad(analyzer_cfg):
+    """En Tertre Rouge (Le Mans) el gas entra 0.68 s tras soltar: la ventana
+    de 0.6 s lo daba por inercia y callaba un aviso bueno. Si el gas llega en
+    menos de COAST_MAX_S, el GAS suena donde el piloto lo pisa, no se calla."""
+    zones = a.detect_events(_vuelta_con_gas_tardio(0.7), 1000.0, analyzer_cfg)
+    z = zones[0]
+    assert not z["coasting"], "0.7 s de rodadura se tomaron por inercia"
+    esperado = (284 + 42) / 600 * 0.99
+    assert abs(z["throttle_pos"] - esperado) < 6 / 600, z["throttle_pos"]
+
+
+def test_una_inercia_larga_sigue_sin_gas(analyzer_cfg):
+    """El piloto de VIR rueda 1-3.8 s sin gas en seis curvas: ahi el coach
+    calla el GAS, y eso sigue siendo correcto."""
+    zones = a.detect_events(_vuelta_con_gas_tardio(2.5), 1000.0, analyzer_cfg)
+    assert zones[0]["coasting"], "una inercia de 2.5 s ya no se detecta"
+
+
+def test_un_roce_al_freno_antes_del_gas_no_es_inercia(analyzer_cfg):
+    """St. Pete, curva 1: el pedal llega a cero, lo vuelve a rozar (0.10) dos
+    decimas y el gas entra justo al soltarlo. El arreglo de Tsukuba no lo
+    cubria porque ya habia visto un cero. El GAS tiene que sonar."""
+    df = _vuelta_sintetica(0.8, acelera_despues=False)
+    df.loc[296:307, "Brake"] = 0.10       # re-pisado de 0.2 s
+    df.loc[320:, "Throttle"] = 1.0        # gas 0.6 s tras la primera suelta
+    zones = a.detect_events(df, 1000.0, analyzer_cfg)
+    z = zones[0]
+    assert not z["coasting"]
+    assert abs(z["throttle_pos"] - 320 / 600 * 0.99) < 6 / 600, z["throttle_pos"]
+
+
+def test_st_pete_avisa_gas_en_la_curva_1(analyzer_cfg):
+    from conftest import DATA
+
+    df = a.load_lap(str(DATA / "st_pete.csv"))
+    length = a.track_length_from_speed(df)
+    zones = a.detect_events(df, length, analyzer_cfg)
+    assert len(zones) == 7
+    z = zones[0]
+    assert not z["coasting"], "la curva 1 de St. Pete sigue muda"
+    assert 11.2 < z["throttle_pos"] * 100 < 11.7, z["throttle_pos"]
+
+
+def _vuelta_con_freno_suave_que_frena(pico: float, quita_ms: float):
+    """Freno bajo el umbral de pico pero que QUITA velocidad de verdad."""
+    df = _vuelta_sintetica(pico)
+    n = 84
+    df.loc[200:283, "Speed"] = np.linspace(50.0, 50.0 - quita_ms, n)
+    df.loc[284:, "Speed"] = 50.0 - quita_ms
+    return df
+
+
+def test_un_freno_suave_que_quita_velocidad_es_una_frenada(analyzer_cfg):
+    """Indy 58 %: 0.17 de pedal durante 0.9 s y 16 km/h menos. Eso no es un
+    roce, es la curva que faltaba. Un roce de verdad no frena el coche."""
+    con = _vuelta_con_freno_suave_que_frena(0.17, 16 / 3.6)
+    sin = _vuelta_con_freno_suave_que_frena(0.17, 2 / 3.6)
+    assert len(a.detect_events(con, 1000.0, analyzer_cfg)) == 1, "se tiro la frenada"
+    assert a.detect_events(sin, 1000.0, analyzer_cfg) == [], "un roce avisa"
+
+
+def test_indy_gt3_detecta_la_frenada_del_58(analyzer_cfg):
+    from conftest import DATA
+
+    df = a.load_lap(str(DATA / "indy_gt3.csv"))
+    length = a.track_length_from_speed(df)
+    zones = a.detect_events(df, length, analyzer_cfg)
+    posiciones = [round(z["brake_pos"] * 100, 1) for z in zones]
+    assert len(zones) == 6, posiciones
+    assert any(abs(p - 58.1) < 0.3 for p in posiciones), posiciones
+
+
+def _vuelta_con_dos_lifts_pegados():
+    """Levanta a cero 0.3 s, medio gas, roza el pleno una decima, otra vez
+    medio gas, y pleno. Las esses de VIR con el 296."""
+    import pandas as pd
+
+    n = 600
+    df = pd.DataFrame({
+        "Speed": np.full(n, 30.0),
+        "LapDistPct": np.linspace(0.0, 0.99, n),
+        "Brake": np.zeros(n),
+        "Throttle": np.ones(n),
+        "Gear": np.full(n, 3, dtype=int),
+    })
+    df.loc[200:217, "Throttle"] = 0.0
+    df.loc[218:229, "Throttle"] = 0.65
+    df.loc[230:235, "Throttle"] = 0.92    # roza el pleno una decima
+    df.loc[236:300, "Throttle"] = 0.60
+    return df
+
+
+def test_dos_lifts_pegados_son_uno(analyzer_cfg):
+    df = _vuelta_con_dos_lifts_pegados()
+    lifts = a.detect_lifts(df, analyzer_cfg, track_length=1000.0)
+    assert len(lifts) == 1, [(l["lift_pos"], l["gas_pos"]) for l in lifts]
+    assert abs(lifts[0]["lift_pos"] - 199 / 600 * 0.99) < 3 / 600
+    # El GAS es la vuelta del ultimo valle, no el roce del pleno de en medio.
+    assert lifts[0]["gas_pos"] > 300 / 600 * 0.99, lifts[0]["gas_pos"]

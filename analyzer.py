@@ -35,6 +35,22 @@ BRAKE_MIN_PEAK = 0.20   # pico minimo de freno para contar como frenada. Empezo
                         # descartes dudosos ya no son silenciosos: detect_events
                         # los canta para que decida el piloto.
 BRAKE_MIN_DUR = 0.20    # segundos minimos por encima de BRAKE_OFF
+BRAKE_SLOW_DUR = 0.60   # un freno sostenido al menos esto y bajo el pico minimo
+BRAKE_SLOW_DROP = 12.0  # ...cuenta igual si quita al menos estos km/h. Leccion
+                        # de Indy con el 296 (ago-2026): 0.17 de pedal, 0.9 s y
+                        # 16 km/h menos en la curva del 58 % que Sergio echaba
+                        # en falta. Un roce no frena el coche; una frenada
+                        # suave si. Es la fisica la que separa una de otra, no
+                        # el pico. Los toques de Winton (0.05-0.14, estabilizar
+                        # el coche) no quitan velocidad y siguen fuera.
+COAST_MAX_S = 1.5       # tras soltar el freno, si el gas entra antes de esto
+                        # el GAS suena donde el piloto lo pisa de verdad; solo
+                        # una rodadura mas larga es "inercia" y se calla. Antes
+                        # la ventana era 0.6 s fija: en Tertre Rouge (Le Mans)
+                        # el gas entraba a 0.68 s y en la curva 1 de St. Pete
+                        # tras un roce del freno, y se callaban dos avisos
+                        # buenos. Tras la suelta ya no hay auto-blip que
+                        # ensucie el gas, asi que ahi el acelerador si es fiable.
 THROTTLE_ON = 0.20      # apertura de gas que cuenta como "vuelve a acelerar"
 MERGE_DIST = 40.0       # metros: eventos mas juntos que esto se fusionan
 
@@ -152,13 +168,20 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
         duration = (end - i) / SAMPLE_RATE
         peak = float(brake[i:end].max())
 
-        if duration >= cfg.brake_min_dur and peak >= cfg.brake_min_peak:
-            # Retroceder al primer contacto real con el pedal: el punto de
-            # frenada util es donde el pie ATERRIZA, no donde cruza el umbral.
-            start = i
-            while start > 0 and brake[start - 1] > cfg.brake_off:
-                start -= 1
+        # Retroceder al primer contacto real con el pedal: el punto de
+        # frenada util es donde el pie ATERRIZA, no donde cruza el umbral.
+        start = i
+        while start > 0 and brake[start - 1] > cfg.brake_off:
+            start -= 1
 
+        # Un freno suave que QUITA velocidad es una frenada aunque el pico
+        # quede bajo el minimo (Indy 58 %, ver BRAKE_SLOW_DROP). La caida se
+        # mide desde que el pie aterriza hasta que suelta.
+        drop_kmh = float(speed[start] - speed[start:end].min()) * 3.6
+        slow_brake = (duration >= BRAKE_SLOW_DUR and drop_kmh >= BRAKE_SLOW_DROP)
+
+        if duration >= cfg.brake_min_dur and (peak >= cfg.brake_min_peak
+                                              or slow_brake):
             # Punto de gas = momento en que el pie izquierdo suelta el freno.
             #
             # Medido sobre la referencia real, este punto coincide con el
@@ -194,6 +217,21 @@ def detect_events(df: pd.DataFrame, track_length: float, cfg) -> list[dict]:
                     window = gas + int(0.6 * SAMPLE_RATE)
                     coasting = (throttle[gas:min(window, n)].max()
                                 < cfg.throttle_on)
+
+            # Inercia CORTA (leccion de Le Mans y St. Pete, ago-2026): si el
+            # gas entra en menos de COAST_MAX_S tras la suelta, el aviso de
+            # GAS va donde el pie lo pisa. Cubre el gas que llega a 0.7 s
+            # (Tertre Rouge) y el roce del freno antes de acelerar (curva 1
+            # de St. Pete, donde el pedal toco cero y el bucle de arriba ya
+            # no lo mueve). Solo una rodadura mas larga sigue siendo inercia
+            # y se calla: ordenar GAS donde la referencia va en banda es
+            # informacion falsa, pero callarlo donde SI acelera tambien.
+            if coasting:
+                limit = min(gas + int(COAST_MAX_S * SAMPLE_RATE), n)
+                hits = np.where(throttle[gas:limit] >= cfg.throttle_on)[0]
+                if len(hits):
+                    gas = gas + int(hits[0])
+                    coasting = False
 
             # Solo informativo: donde llega a gas pleno. No genera aviso
             # (varia entre 0.2 s y 1.1 s segun la curva: es un resultado de
@@ -269,7 +307,7 @@ def merge_close(zones: list[dict], track_length: float, min_gap: float) -> list[
     return merged
 
 
-def detect_lifts(df: pd.DataFrame, cfg) -> list[dict]:
+def detect_lifts(df: pd.DataFrame, cfg, track_length: float | None = None) -> list[dict]:
     """Zonas donde se LEVANTA el gas sin frenar (curvas rapidas de solo alzar).
 
     Un lift es una caida desde gas pleno que se sostiene parcial SIN que el
@@ -319,6 +357,26 @@ def detect_lifts(df: pd.DataFrame, cfg) -> list[dict]:
             i = j
         else:
             i += 1
+
+    # Lifts PEGADOS se fusionan, igual que las frenadas (leccion de las esses
+    # de VIR con el 296, ago-2026): el pie levanta a cero, medio gas, roza el
+    # pleno una decima y vuelve a medio gas. Eran dos lifts a 34 m que sonaban
+    # SUELTA-GAS-SUELTA-GAS en 1.5 s, y el primer GAS caia a 0.15 s de su
+    # SUELTA: ruido, no informacion. Fusionados: una SUELTA donde el pie
+    # rompe y un GAS cuando vuelve del ultimo valle.
+    if track_length and len(lifts) > 1:
+        merged = [lifts[0]]
+        for lift in lifts[1:]:
+            prev = merged[-1]
+            gap_m = (lift["lift_pos"] - prev["gas_pos"]) * track_length
+            if 0 <= gap_m < cfg.merge_dist:
+                prev["gas_pos"] = lift["gas_pos"]
+                prev["gas_speed_ms"] = lift["gas_speed_ms"]
+                prev["lift_min_throttle"] = min(prev["lift_min_throttle"],
+                                                lift["lift_min_throttle"])
+            else:
+                merged.append(lift)
+        lifts = merged
     return lifts
 
 
@@ -496,7 +554,7 @@ def main():
                   f"{z['throttle_pos'] * 100:.2f}% (inercia): esa zona no "
                   f"llevara aviso de GAS", flush=True)
 
-    lifts = detect_lifts(df, args)
+    lifts = detect_lifts(df, args, args.track_length)
     if lifts:
         print(f"{len(lifts)} lifts (levantar sin frenar):")
         for lift in lifts:
