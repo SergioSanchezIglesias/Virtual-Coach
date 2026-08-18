@@ -24,7 +24,9 @@ def analizar(circuito: str, cfg) -> dict:
     taken = ([z["brake_pos"] for z in zones]
              + [z["throttle_pos"] for z in zones]
              + [lift["lift_pos"] for lift in lifts])
-    manage = a.detect_manage_zones(df, track_length, cfg, taken)
+    spans = ([(z["brake_pos"], z["throttle_pos"]) for z in zones]
+             + [(lift["lift_pos"], lift["gas_pos"]) for lift in lifts])
+    manage = a.detect_manage_zones(df, track_length, cfg, taken, spans)
 
     cfg.track = circuito
     cfg.car = "test"
@@ -482,15 +484,20 @@ def test_la_escala_del_pedal_no_mueve_las_frenadas(circuito, factor,
 
 
 def test_vir_detecta_las_trece_frenadas(analyzer_cfg):
-    """La vuelta real de VIR con el pedal a 0.376: 13 zonas, y entre ellas las
-    cuatro que con umbrales absolutos se perdian (12.4, 15.0, 52.4 y 83.0 %)."""
+    """La vuelta real de VIR con el pedal a 0.376: 12 zonas, y entre ellas las
+    cuatro que con umbrales absolutos se perdian (12.4, 15.0, 52.4 y 83.0 %).
+
+    Eran 13 hasta MERGE_GAP (ago-2026): en Horseshoe este piloto suelta 8 m
+    entre dos apoyos (3.4 -> 6.2 % y 6.4 -> 7.1 %); los otros tres pilotos de
+    VIR (Jarno GT3, Aleix y Carlos GT4) la hacen de un solo apoyo. Es UNA curva.
+    """
     from conftest import DATA
 
     df = a.load_lap(str(DATA / "vir.csv"))
     length = a.track_length_from_speed(df)
     zones = a.detect_events(df, length, analyzer_cfg)
     posiciones = [round(z["brake_pos"] * 100, 1) for z in zones]
-    assert len(zones) == 13, posiciones
+    assert len(zones) == 12, posiciones
     for esperada in (12.4, 15.0, 52.4, 83.0):
         assert any(abs(p - esperada) < 0.3 for p in posiciones), (
             f"falta la frenada del {esperada} %: {posiciones}"
@@ -618,3 +625,70 @@ def test_dos_lifts_pegados_son_uno(analyzer_cfg):
     assert abs(lifts[0]["lift_pos"] - 199 / 600 * 0.99) < 3 / 600
     # El GAS es la vuelta del ultimo valle, no el roce del pleno de en medio.
     assert lifts[0]["gas_pos"] > 300 / 600 * 0.99, lifts[0]["gas_pos"]
+
+
+# ---------------------------------------------------------------------------
+# Dos pilotos por circuito (ago-2026): Interlagos (Porsche Cup) y VIR (GT4)
+# ---------------------------------------------------------------------------
+#
+# Lo que se repite en dos pilotos distintos no es del piloto, es de la regla.
+# (1) Una zona de gestion colada DENTRO de una frenada larga con rodadura (el
+# gas al 0.07 cruza su media por ruido). (2) Dos apoyos de freno a 6 m sin
+# fusionar porque merge_close media freno->freno (41 m), no el hueco real
+# gas->freno.
+
+
+def test_una_zona_de_gestion_no_cae_dentro_de_una_frenada(analyzer_cfg):
+    """El gas modulado entre el freno y el gas de una misma zona no es
+    gestion: es la rodadura de esa frenada. Se descarta por solape."""
+    df = _vuelta_sintetica(0.8, acelera_despues=False)
+    # rodadura larga con gas bajo y ruidoso antes de acelerar (2.5 s)
+    ruido = np.tile([0.05, 0.10], 75)
+    df.loc[284:433, "Throttle"] = ruido
+    df.loc[434:, "Throttle"] = 1.0
+    zones = a.detect_events(df, 1000.0, analyzer_cfg)
+    assert len(zones) == 1
+    taken = [zones[0]["brake_pos"], zones[0]["throttle_pos"]]
+    spans = [(zones[0]["brake_pos"], zones[0]["throttle_pos"])]
+    manage = a.detect_manage_zones(df, 1000.0, analyzer_cfg, taken, spans)
+    assert manage == [], manage
+
+
+def test_interlagos_no_tiene_gestion_dentro_de_la_s_do_senna(analyzer_cfg):
+    from conftest import DATA
+
+    df = a.load_lap(str(DATA / "interlagos.csv"))
+    length = a.track_length_from_speed(df)
+    zones = a.detect_events(df, length, analyzer_cfg)
+    lifts = a.detect_lifts(df, analyzer_cfg, length)
+    assert len(zones) == 7
+    taken = ([z["brake_pos"] for z in zones] + [z["throttle_pos"] for z in zones]
+             + [l["lift_pos"] for l in lifts])
+    spans = ([(z["brake_pos"], z["throttle_pos"]) for z in zones]
+             + [(l["lift_pos"], l["gas_pos"]) for l in lifts])
+    manage = a.detect_manage_zones(df, length, analyzer_cfg, taken, spans)
+    assert manage == [], [round(m["pos"] * 100, 2) for m in manage]
+
+
+def test_dos_apoyos_de_freno_a_pocos_metros_son_una_frenada(analyzer_cfg):
+    """Toque, suelta 0.2 s, y frenada: un solo aviso, sin inercia falsa."""
+    df = _vuelta_sintetica(0.8, acelera_despues=True)
+    df.loc[200:239, "Brake"] = 0.3      # toque de 0.67 s
+    df.loc[240:245, "Brake"] = 0.0      # suelta un instante (~10 m)
+    df.loc[246:283, "Brake"] = 0.8      # apoyo final
+    zones = a.detect_events(df, 1000.0, analyzer_cfg)
+    assert len(zones) == 1, [round(z["brake_pos"] * 100, 1) for z in zones]
+    assert not zones[0]["coasting"]
+    assert abs(zones[0]["brake_pos"] - 200 / 600 * 0.99) < 3 / 600
+
+
+def test_vir_gt4_hog_pen_es_una_sola_frenada(analyzer_cfg):
+    from conftest import DATA
+
+    df = a.load_lap(str(DATA / "vir_gt4_b.csv"))
+    length = a.track_length_from_speed(df)
+    zones = a.detect_events(df, length, analyzer_cfg)
+    posiciones = [round(z["brake_pos"] * 100, 1) for z in zones]
+    assert len(zones) == 8, posiciones
+    hog = [z for z in zones if abs(z["brake_pos"] * 100 - 83.6) < 0.3]
+    assert len(hog) == 1 and not hog[0]["coasting"], posiciones

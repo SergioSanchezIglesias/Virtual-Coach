@@ -22,7 +22,7 @@ Trabajamos en español.
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba, VIR, St. Pete e Indy-GT3 como fixtures) | 158 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba, VIR ×2, St. Pete, Indy-GT3 e Interlagos como fixtures) | 162 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -185,6 +185,30 @@ descartado y cantado. Lo vigilan
 `test_un_freno_suave_que_quita_velocidad_es_una_frenada` y
 `test_indy_gt3_detecta_la_frenada_del_58` (`tests/data/indy_gt3.csv`, sexto
 fixture).
+
+**Dos apoyos de freno con menos de `MERGE_GAP` (15 m) de pedal SUELTO entre
+medias son UNA frenada.** `merge_close` medía freno→freno (`MERGE_DIST`,
+40 m), y "soltar un instante" se mide en el hueco, no entre aterrizajes: en
+Hog Pen (VIR, Carlos Abarca, GT4) toque, 6 m sin pedal y frenada eran 41 m
+freno→freno → dos avisos y una inercia falsa. Con el hueco, Hog Pen es una;
+la Horseshoe de Yeonwoo (8 m entre apoyos, que los otros tres pilotos de VIR
+hacen de un tirón) también, y la segunda chicane de Mulsanne igual. Un hueco
+negativo (el gas de la anterior cae tras este freno, porque el pie no pisó
+gas entre medias) también fusiona, y la fusión se lleva el `coasting` del
+apoyo final. Lo vigilan `test_dos_apoyos_de_freno_a_pocos_metros_son_una_frenada`
+y `test_vir_gt4_hog_pen_es_una_sola_frenada` (`tests/data/vir_gt4_b.csv`).
+
+**Una zona de gestión no puede caer DENTRO de una frenada o un lift.**
+`detect_manage_zones` solo miraba que su inicio estuviera a más de
+`MANAGE_CLEAR` de un punto de freno/gas; la rodadura de una frenada larga (la
+S do Senna en Interlagos, 4 s con el gas al 0,07) cruza su media por ruido y
+colaba un "Medio gas" en mitad de la frenada. Lo vieron **dos pilotos en dos
+circuitos** (Hady en Interlagos, Carlos en VIR). Ahora recibe los tramos
+ocupados (`taken_spans`) y descarta lo que caiga entre freno y gas o entre
+suelta y gas. Lo vigilan `test_una_zona_de_gestion_no_cae_dentro_de_una_frenada`
+y `test_interlagos_no_tiene_gestion_dentro_de_la_s_do_senna`
+(`tests/data/interlagos.csv`). Con esto los dos Porsche Cup de Interlagos
+coinciden en las 7 frenadas y los 2 lifts a 5-20 m.
 
 **Si la referencia no acelera tras soltar el freno (inercia), esa zona no
 lleva aviso de GAS.** El analyzer calculaba esa validación (`coasting`) desde
@@ -447,7 +471,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 158 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 162 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
@@ -465,7 +489,7 @@ fichero y comparar. Tres capas:
   aviso que no se distingue de otro no sirve, y eso no se ve leyendo el código.
 
 Los CSV de `tests/data/` son **copias congeladas** de las dos vueltas
-validadas (más Tsukuba, VIR, St. Pete e Indy-GT3 como fixtures no validados en pista), versionadas con una excepción en `.gitignore` (353 KB comprimidos).
+validadas (más Tsukuba, VIR ×2, St. Pete, Indy-GT3 e Interlagos como fixtures no validados en pista), versionadas con una excepción en `.gitignore` (353 KB comprimidos).
 Son copias a propósito: los CSV de la raíz los sobrescribes al exportar de
 Garage61, y un fixture que cambia bajo los pies no congela nada.
 

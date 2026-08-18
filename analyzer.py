@@ -53,6 +53,13 @@ COAST_MAX_S = 1.5       # tras soltar el freno, si el gas entra antes de esto
                         # ensucie el gas, asi que ahi el acelerador si es fiable.
 THROTTLE_ON = 0.20      # apertura de gas que cuenta como "vuelve a acelerar"
 MERGE_DIST = 40.0       # metros: eventos mas juntos que esto se fusionan
+MERGE_GAP = 15.0        # metros de pedal SUELTO entre dos apoyos de freno para
+                        # que sigan siendo una sola frenada. Leccion de Hog Pen
+                        # (VIR, GT4, ago-2026): toque, 6 m sin pedal, frenada.
+                        # Medido freno->freno eran 41 m (justo fuera de
+                        # MERGE_DIST) y salian dos avisos y una inercia falsa;
+                        # "soltar un instante" se mide en el hueco, no entre
+                        # los aterrizajes.
 
 # Lifts: curvas rapidas que se toman LEVANTANDO el gas, sin llegar a frenar.
 LIFT_FULL = 0.90        # gas considerado "pleno" del que se levanta
@@ -294,13 +301,18 @@ def merge_close(zones: list[dict], track_length: float, min_gap: float) -> list[
     merged = [zones[0]]
     for z in zones[1:]:
         gap = (z["brake_pos"] - merged[-1]["brake_pos"]) * track_length
-        if gap < min_gap:
+        # Hueco real sin pedal entre el apoyo anterior y este.
+        free = (z["brake_pos"] - merged[-1]["throttle_pos"]) * track_length
+        # (negativo = el gas de la anterior cae tras este freno: se solapan)
+        if gap < min_gap or free < MERGE_GAP:
             prev = merged[-1]
             prev["peak_brake"] = max(prev["peak_brake"], z["peak_brake"])
             prev["min_speed_ms"] = min(prev["min_speed_ms"], z["min_speed_ms"])
             prev["abs_s"] = round(prev["abs_s"] + z["abs_s"], 3)
             prev["throttle_pos"] = z["throttle_pos"]
             prev["throttle_speed_ms"] = z["throttle_speed_ms"]
+            prev["coasting"] = z["coasting"]  # el gas es el del apoyo final
+            prev["full_throttle_pos"] = z["full_throttle_pos"]
             prev["gear"] = z["gear"]  # la marcha de la curva es la del apoyo final
         else:
             merged.append(z)
@@ -381,7 +393,8 @@ def detect_lifts(df: pd.DataFrame, cfg, track_length: float | None = None) -> li
 
 
 def detect_manage_zones(df: pd.DataFrame, track_length: float, cfg,
-                        taken_pos: list[float]) -> list[dict]:
+                        taken_pos: list[float],
+                        taken_spans: list[tuple[float, float]] = ()) -> list[dict]:
     """Zonas de gestion: gas parcial sostenido, sin frenar, sin llegar a pleno.
 
     Curvas rapidas encadenadas donde el gas se MODULA (sube y baja) en vez de
@@ -415,9 +428,15 @@ def detect_manage_zones(df: pd.DataFrame, track_length: float, cfg,
                 p = float(pos[start])
                 near = any(abs(p - t) * track_length < cfg.manage_clear
                            for t in taken_pos)
+                # Y tampoco DENTRO de una frenada o un lift ya detectados: la
+                # rodadura entre el freno y el gas de una zona larga (la S do
+                # Senna en Interlagos, 4 s con el gas al 0.07) cruza su media
+                # por puro ruido y colaba una "gestion" que no existe. Lo
+                # vieron dos pilotos distintos en dos circuitos distintos.
+                inside = any(lo <= p <= hi for lo, hi in taken_spans)
                 if (dur >= cfg.manage_min_dur and bmax < cfg.manage_no_brake
                         and 0.05 < gm < 0.65 and cross >= cfg.manage_crossings
-                        and not near):
+                        and not near and not inside):
                     apex = start + int(np.argmin(speed[start:j]))
                     zones.append({
                         "pos": p,
@@ -567,7 +586,9 @@ def main():
     taken = ([z["brake_pos"] for z in zones]
              + [z["throttle_pos"] for z in zones]
              + [lift["lift_pos"] for lift in lifts])
-    manage = detect_manage_zones(df, args.track_length, args, taken)
+    spans = ([(z["brake_pos"], z["throttle_pos"]) for z in zones]
+             + [(lift["lift_pos"], lift["gas_pos"]) for lift in lifts])
+    manage = detect_manage_zones(df, args.track_length, args, taken, spans)
     if manage:
         print(f"{len(manage)} zonas de gestion (gas parcial, sin frenar):")
         for m in manage:
