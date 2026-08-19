@@ -260,6 +260,19 @@ class CarState:
     # (la distancia x mejor vuelta supone velocidad constante y baila en
     # cada curva). 0 = no se sabe (JSONL viejo).
     est_time: float = 0.0
+    # Se ha ido de la sala (o ha acabado y salido) en carrera: el SDK ya no lo
+    # da, pero lo clasificado no se borra. Lo pone standings.CarMemory, nunca
+    # el SDK; en el relative no sale porque ya no esta en pista.
+    gone: bool = False
+
+
+def laps_done(race_laps: int | None, leader_lap: int) -> int:
+    """Vueltas de carrera completadas. `RaceLaps` es el contador del propio
+    iRacing; CarIdxLap del lider incluye la vuelta de formacion (en Porsche
+    Cup el overlay decia 16/16 cuando quedaban dos) y solo es reserva."""
+    if race_laps is not None and race_laps >= 0:
+        return int(race_laps)
+    return max(leader_lap - 1, 0)
 
 
 @dataclass(frozen=True)
@@ -482,13 +495,14 @@ class IRacingSessionSource(SessionSource):
                 )
                 cars.append(car)
                 if car.pos == 1:
-                    leader_laps = max(car.lap - 1, 0)
+                    leader_laps = car.lap
+            race_laps = self._scalar("RaceLaps")
             return SessionSnapshot(
                 t=t,
                 session_type=stype,
                 time_remain=float(self.ir["SessionTimeRemain"] or 0.0),
                 laps_total=laps_total,
-                laps_done=leader_laps,
+                laps_done=laps_done(None if race_laps is None else int(race_laps), leader_laps),
                 session_num=num,
                 cars=tuple(cars),
                 air_temp=self._scalar("AirTemp"),

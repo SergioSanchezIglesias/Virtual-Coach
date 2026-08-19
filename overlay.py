@@ -167,6 +167,14 @@ def _mix(color: str, base: str, k: float) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _laps_text(snap: SessionSnapshot) -> str:
+    """Vuelta en curso / total. laps_done viene de RaceLaps (ver
+    source.laps_done): el lider en CarIdxLap cuenta la de formacion."""
+    if snap.laps_total:
+        return f"Laps {snap.laps_done + 1} / {snap.laps_total}"
+    return f"Lap {snap.laps_done + 1}"
+
+
 class Feed:
     """Guarda la ultima foto y calcula la clasificacion UNA vez por foto
     (con la anterior a mano, para que dos coches pegados no bailen)."""
@@ -177,8 +185,10 @@ class Feed:
         self.status = "Esperando a iRacing… (entra en una sesión)"
         self.lock = threading.Lock()
         self._ranks: dict[int, int] = {}
+        self._memory = st.CarMemory()  # en carrera, quien se va sigue clasificado
 
     def push(self, snap: SessionSnapshot) -> None:
+        snap = self._memory.apply(snap)
         blocks = st.build_standings(snap, self._ranks)
         with self.lock:
             self.snap, self.blocks = snap, blocks
@@ -307,14 +317,20 @@ class Panel:
                                          fill=BG, outline="")
             self.canvas.create_line(x0 + 1, y0 + hdr_h, x1 - 1, y0 + hdr_h, fill=BORDER)
 
-    def _text(self, x, y, s, size=13, weight="normal", fill=TEXT, mono=False, anchor="w"):
-        self.canvas.create_text(x, y, text=s, font=self._f(size, weight, mono),
-                                fill=fill, anchor=anchor)
+    def _text(self, x, y, s, size=13, weight="normal", fill=TEXT, mono=False, anchor="w") -> float:
+        """Pinta y devuelve el ancho REAL del texto. La cabecera encadena
+        textos ("13 coches", "Laps 1 / 16"...) y con anchos a ojo se pisaban
+        (pasó con dos cifras de coches)."""
+        item = self.canvas.create_text(x, y, text=s, font=self._f(size, weight, mono),
+                                       fill=fill, anchor=anchor)
+        x0, _, x1, _ = self.canvas.bbox(item)
+        return float(x1 - x0)
 
     def _chip(self, x, cy, text, color, size=F_TINY + 1, filled=False, h=16, w=None) -> float:
         """Chip con borde de color (o relleno). Devuelve el ancho que ocupa."""
         s = self.s
-        w = w if w is not None else 10 + len(text) * 6.4
+        if w is None:
+            w = tkfont.Font(font=self._f(size, "bold")).measure(text) / s + 10
         if filled:
             self._rrect(x, cy - h / 2 * s, x + w * s, cy + h / 2 * s, 4 * s, fill=color, outline="")
             self._text(x + w * s / 2, cy, text, size, "bold", BG, anchor="center")
@@ -429,14 +445,9 @@ class StandingsPanel(Panel):
         name = self._class_label(b)
         if name:
             x += self._chip(x, cy, name, color, size=F_TINY + 2, h=18) + 10 * s
-        self._text(x, cy, f"{b.n}", F_ROW, "bold")
-        self._text(x + 8 * s + len(str(b.n)) * 7.5 * s, cy, "coches", F_SMALL, fill=TEXT_DIM)
-        x += 62 * s
-        if snap.laps_total:
-            self._text(x, cy, f"Laps {snap.laps_done + 1} / {snap.laps_total}", F_ROW, "bold")
-        else:
-            self._text(x, cy, f"Lap {snap.laps_done + 1}", F_ROW, "bold")
-        x += 92 * s
+        x += self._text(x, cy, f"{b.n}", F_ROW, "bold") + 4 * s
+        x += self._text(x, cy, "coches", F_SMALL, fill=TEXT_DIM) + 14 * s
+        x += self._text(x, cy, _laps_text(snap), F_ROW, "bold") + 14 * s
         m, sec = divmod(max(0, int(snap.time_remain)), 60)
         remain = f"{m}:{sec:02d}" if snap.time_remain < 36000 else "—"
         self._text(x, cy, remain, F_ROW, "bold", mono=True)
@@ -445,8 +456,9 @@ class StandingsPanel(Panel):
             row = next((r for r in b.rows if r.is_me), None)
             if row is not None:
                 col = TEXT_DIM if row.delta is None else (ACCENT if row.delta >= 0 else BRAKE)
-                xr -= self._chip(xr - (10 + len(st.fmt_delta(row.delta)) * 7.2) * s, cy,
-                                 st.fmt_delta(row.delta), col, size=F_TINY + 2, h=18) + 8 * s
+                txt = st.fmt_delta(row.delta)
+                cw = tkfont.Font(font=self._f(F_TINY + 2, "bold")).measure(txt) + 10 * s
+                xr -= self._chip(xr - cw, cy, txt, col, size=F_TINY + 2, h=18) + 8 * s
         self._text(xr, cy, f"SoF {b.sof:.0f}", F_ROW, "bold", TEXT, anchor="e")
         y += H_HDR * s
         # Filas
@@ -466,12 +478,14 @@ class StandingsPanel(Panel):
         me = r.is_me
         car = r.car
         cols = list(self._cols())
-        self._ident(cols, cy, car, str(r.pos), ACCENT if me else TEXT, me)
+        # Quien se ha ido de la sala sigue clasificado, pero en gris.
+        self._ident(cols, cy, car, str(r.pos), ACCENT if me else TEXT, me,
+                    name_color=TEXT_FAINT if car.gone else TEXT)
         (_, _, x1, _) = cols[4]
         self._text(x1, cy, st.fmt_ir(car.irating), F_SMALL, "bold", TEXT_DIM, mono=True, anchor="e")
         (_, _, x1, _) = cols[5]
         inc_col = BRAKE if car.incidents >= 12 else (VOICE if car.incidents >= 8 else TEXT_DIM)
-        self._text(x1, cy, f"{car.incidents}x", F_SMALL, "bold" if me else "normal",
+        self._text(x1, cy, st.fmt_inc(car.incidents), F_SMALL, "bold" if me else "normal",
                    inc_col, mono=True, anchor="e")
         (_, x0, x1, _) = cols[6]
         if car.on_pit_road:
@@ -530,18 +544,12 @@ class RelativePanel(Panel):
                                 self._class_color(mine.class_name, class_index.get(mine.class_id, 0)),
                                 size=F_TINY + 2, h=18) + 10 * s
             if my is not None:
-                self._text(x, cy, f"P{my.pos}", F_ROW, "bold", ACCENT, mono=True)
-                x += (len(str(my.pos)) * 8 + 14) * s
-                self._text(x, cy, f"de {mine.n}", F_SMALL, fill=TEXT_DIM)
-                x += 46 * s
-            self._text(x, cy, f"{me.incidents}x", F_ROW, "bold",
+                x += self._text(x, cy, f"P{my.pos}", F_ROW, "bold", ACCENT, mono=True) + 6 * s
+                x += self._text(x, cy, f"de {mine.n}", F_SMALL, fill=TEXT_DIM) + 14 * s
+            self._text(x, cy, st.fmt_inc(me.incidents), F_ROW, "bold",
                        BRAKE if me.incidents >= 12 else (VOICE if me.incidents >= 8 else TEXT_DIM),
                        mono=True)
-        if snap.laps_total:
-            lap_txt = f"Laps {snap.laps_done + 1} / {snap.laps_total}"
-        else:
-            lap_txt = f"Lap {snap.laps_done + 1}"
-        self._text((self.w - PAD) * s, cy, lap_txt, F_ROW, "bold", TEXT_DIM, anchor="e")
+        self._text((self.w - PAD) * s, cy, _laps_text(snap), F_ROW, "bold", TEXT_DIM, anchor="e")
         y = H_HDR * s
         for i, r in enumerate(rows):
             self._row_bg(y, r.is_me, i % 2 == 1, self.w * s)

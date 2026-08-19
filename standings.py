@@ -15,9 +15,9 @@ los cambios es cero: lo que unos ganan lo pierden otros.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from source import CarState, SessionSnapshot
+from source import CarState, SessionSnapshot, laps_done  # noqa: F401 (laps_done: lo usa el overlay)
 
 # La constante de la formula: 1600 / ln 2. Con ella, 1600 puntos de
 # diferencia son "el doble de probable ganar".
@@ -119,6 +119,50 @@ class ClassBlock:
 
 def _in_session(c: CarState) -> bool:
     return c.in_world
+
+
+class CarMemory:
+    """Recuerda, EN CARRERA, a quien se va de la sala.
+
+    Cuando un piloto acaba y sale (o abandona), el SDK deja de darlo: surface
+    -1, lap -1, o directamente desaparece de DriverInfo. Si se descarta, los
+    de detras "suben" puestos que no son suyos (Sergio: 14 -> 10 -> 7 segun
+    acababan los primeros). Aqui se le congela la ultima foto en la que
+    estuvo en pista, marcada `gone`, y la clasificacion lo sigue contando
+    donde estaba. En practica/quali no: ahi irse es irse.
+    """
+
+    def __init__(self):
+        self._last: dict[int, CarState] = {}
+        self._session: tuple[str, int] | None = None
+
+    def apply(self, snap: SessionSnapshot) -> SessionSnapshot:
+        key = (snap.session_type, snap.session_num)
+        if key != self._session:
+            self._last, self._session = {}, key
+        if snap.session_type != "Race":
+            return snap
+        seen = {c.idx: c for c in snap.cars}
+        for c in snap.cars:
+            if c.in_world:
+                self._last[c.idx] = c
+        cars = list(snap.cars)
+        out = []
+        for c in cars:
+            if c.in_world:
+                out.append(c)
+                continue
+            old = self._last.get(c.idx)
+            # Slot reocupado por otro piloto: el anterior no resucita.
+            if old is not None and old.name == c.name:
+                out.append(replace(old, gone=True, incidents=c.incidents))
+            else:
+                self._last.pop(c.idx, None)
+                out.append(c)
+        for idx, old in self._last.items():
+            if idx not in seen:
+                out.append(replace(old, gone=True))
+        return replace(snap, cars=tuple(out))
 
 
 def _track_pos(c: CarState) -> float:
@@ -265,7 +309,7 @@ def build_relative(snap: SessionSnapshot, around: int = 3,
     ahead: list[tuple[float, CarState]] = []
     behind: list[tuple[float, CarState]] = []
     for c in snap.cars:
-        if not c.in_world or c.is_me:
+        if not c.in_world or c.gone or c.is_me:
             continue
         rel = ((c.lap_dist_pct - me.lap_dist_pct + 0.5) % 1.0) - 0.5  # (-0.5, 0.5]
         (ahead if rel > 0 else behind).append((rel, c))
@@ -328,6 +372,12 @@ def fmt_ir(ir: int) -> str:
     if ir <= IR_UNKNOWN:
         return "—"
     return f"{ir / 1000:.1f}K" if ir >= 1000 else str(ir)
+
+
+def fmt_inc(n: int) -> str:
+    """Incidentes. iRacing no publica los de los rivales en todas las
+    sesiones (CurDriverIncidentCount = -1): eso es "no se sabe", no "-1x"."""
+    return "—" if n < 0 else f"{n}x"
 
 
 def fmt_delta(d: float | None) -> str:

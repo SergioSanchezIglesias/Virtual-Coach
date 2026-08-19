@@ -434,3 +434,63 @@ def test_el_nombre_de_la_serie_no_se_traduce_a_mano():
     # El SDK solo da SeriesID (numero). Un catalogo local que hay que rellenar
     # a mano no es automatico: se quito en vez de pedirlo en cada sesion.
     assert not hasattr(st, "series_name")
+
+
+# --- Tercera ronda de pista (ago-2026) --------------------------------------
+
+
+def test_en_carrera_el_que_se_va_de_la_sala_sigue_contando():
+    # Sergio iba 14 y, segun los de delante acababan y salian de la sala, su
+    # posicion "bajaba" 14 -> 10 -> 7: el SDK deja de dar coche (surface -1,
+    # lap -1) y se descartaba. Quien se va se queda clasificado donde estaba.
+    mem = st.CarMemory()
+    a = _car(0, 1, "A", 1, 4000, 1, lap=17, lap_dist_pct=0.01)
+    b = _car(1, 2, "B", 1, 3500, 2, lap=16, lap_dist_pct=0.90, is_me=True)
+    mem.apply(_snap([a, b]))
+    # A acaba y se va: el SDK lo da como fuera del mundo.
+    a_gone = _car(0, 1, "A", 1, 4000, 0, lap=0, lap_dist_pct=0.0, in_world=False)
+    snap = mem.apply(_snap([a_gone, b], laps_done=16))
+    blocks = st.build_standings(snap)
+    assert [r.car.name for r in blocks[0].rows] == ["A", "B"]
+    assert [r.pos for r in blocks[0].rows] == [1, 2]
+    assert blocks[0].rows[0].car.gone
+    # Y si desaparece del todo de la lista de pilotos, igual.
+    snap = mem.apply(_snap([b], laps_done=16))
+    assert [r.car.name for r in st.build_standings(snap)[0].rows] == ["A", "B"]
+    # Pero el relative no lo ensena: ya no esta en pista.
+    assert all(not r.car.gone for r in st.build_relative(snap))
+
+
+def test_en_practica_el_que_se_va_desaparece():
+    mem = st.CarMemory()
+    a = _car(0, 1, "A", 1, 4000, 1)
+    b = _car(1, 2, "B", 1, 3500, 2, is_me=True)
+    mem.apply(_snap([a, b], session_type="Practice"))
+    snap = mem.apply(_snap([b], session_type="Practice"))
+    assert [r.car.name for r in st.build_standings(snap)[0].rows] == ["B"]
+
+
+def test_un_slot_reocupado_por_otro_piloto_no_resucita_al_anterior():
+    mem = st.CarMemory()
+    mem.apply(_snap([_car(0, 1, "A", 1, 4000, 1), _car(1, 2, "Yo", 1, 3500, 2, is_me=True)]))
+    snap = mem.apply(_snap([_car(0, 7, "Nuevo", 1, 2000, 2), _car(1, 2, "Yo", 1, 3500, 1, is_me=True)]))
+    assert sorted(c.name for c in snap.cars) == ["Nuevo", "Yo"]
+
+
+def test_las_vueltas_completadas_salen_del_contador_de_carrera():
+    # CarIdxLap cuenta la vuelta de formacion: con el lider "en la 16" de 16
+    # aun quedaba esa y otra mas (Porsche Cup). RaceLaps es lo que iRacing
+    # llama vueltas de carrera completadas; el lider solo es reserva.
+    assert st.laps_done(race_laps=14, leader_lap=16) == 14
+    assert st.laps_done(race_laps=None, leader_lap=16) == 15
+    assert st.laps_done(race_laps=None, leader_lap=0) == 0
+
+
+def test_los_incidentes_desconocidos_se_pintan_como_guion():
+    # iRacing no publica los incidentes de los rivales en todas las sesiones:
+    # CurDriverIncidentCount llega a -1 y se veia "-1x" en toda la tabla.
+    assert st.fmt_inc(-1) == "—"
+    assert st.fmt_inc(0) == "0x"
+    assert st.fmt_inc(8) == "8x"
+    snap = _snap([_car(0, 1, "A", 1, 4000, 1, incidents=-1)])
+    assert snap.cars[0].incidents == -1

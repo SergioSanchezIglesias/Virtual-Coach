@@ -22,7 +22,7 @@ Trabajamos en español.
 | `gen_voces.py` | genera los clips de voz (neuronal, edge-tts) | funciona |
 | `app.py` | punto de entrada único (GUI/coach/analyzer) para el `.exe` | funciona |
 | `VirtualCoach.spec` | receta de PyInstaller (construir en Windows) | validada en Mac |
-| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba, VIR ×2, St. Pete, Indy-GT3, Interlagos, RBR e Imola como fixtures) | 166 tests, verdes |
+| `tests/` | red de regresión sobre las dos vueltas validadas (+ Tsukuba, VIR ×2, St. Pete, Indy-GT3, Interlagos, RBR e Imola como fixtures) | 171 tests, verdes |
 
 Validado: los 12 avisos por vuelta caen donde deben, el paso por meta se
 resuelve, la vuelta 2 rearma sola, los pitidos se oyen, y `IRacingSource`
@@ -460,6 +460,28 @@ no el SDK. Los incidentes por coche vienen de
 INC; ámbar ≥ 8x, rojo ≥ 12x). Boceto al día en Pencil: frame "Overlay v2 —
 clasificación + relative (en juego)".
 
+**En carrera, quien se va de la sala SIGUE clasificado donde estaba**
+(`standings.CarMemory`, tercera ronda de pista, ago-2026). Sergio iba 14.º y,
+según los primeros acababan y salían, su posición "bajaba" 14 → 10 → 7: el
+SDK deja de dar al coche (surface −1, lap −1, o desaparece de `DriverInfo`)
+y el overlay lo descartaba, regalando puestos. Ahora el `Feed` congela la
+última foto en pista de cada coche y lo marca `CarState.gone` (campo con
+defecto, los JSONL viejos cargan): la clasificación lo cuenta (en gris), el
+relative no (ya no está en pista), y un slot reocupado por otro nombre no
+resucita al anterior. Solo en carrera: en práctica irse es irse. Lo vigilan
+`test_en_carrera_el_que_se_va_de_la_sala_sigue_contando` y dos más. **Esto
+también toca el Δ≈ de iRating**: con los que se iban fuera de la cuenta, `n`
+y las posiciones se recomprimían y el delta mentía (27 previstos vs 16
+reales en una Porsche Cup); hay que volver a contrastarlo con esto puesto
+antes de tocar la fórmula. **Las vueltas de carrera salen de `RaceLaps`**
+(`source.laps_done`): `CarIdxLap` del líder cuenta la vuelta de formación y
+el overlay decía 16/16 cuando quedaban dos; el líder queda como reserva si
+el canal no viene. Sin validar aún en el PC. **Y los incidentes de los
+rivales pueden no venir** (`CurDriverIncidentCount` = −1 en toda la tabla):
+se pintan "—", no "−1x" (`fmt_inc`). La cabecera de la tarjeta encadena sus
+textos con el ancho MEDIDO (`_text` devuelve el bbox) en vez de a ojo: con
+dos cifras de coches "13 coches" pisaba "Laps".
+
 **Los tests congelan lo que ganó la carrera, y por eso van SIEMPRE primero.**
 Antes de tocar nada del core se fotografía el comportamiento actual (`golden`) y
 solo entonces se cambia. Si se escriben después, se congela el comportamiento
@@ -489,7 +511,7 @@ pronto.
 
 ## Tests
 
-    .venv/bin/python -m pytest tests/ -q      # 166 tests, ~4 s
+    .venv/bin/python -m pytest tests/ -q      # 171 tests, ~4 s
 
 Corren sin iRacing, sin audio y sin internet: el replay a `speed=0` es
 determinista, así que "lo que suena en una vuelta" se puede congelar en un
