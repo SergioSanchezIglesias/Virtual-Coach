@@ -441,13 +441,21 @@ la GUI relanza el proceso con la combinación de interruptores que haya. Cada
 panel recuerda su posición por separado (`overlay_pos.json` con una clave
 por vista; el formato viejo `{x,y}` sigue valiendo para la clasificación).
 
-**El nombre de la serie sale de `series.json`, no del SDK.** iRacing solo
-publica `WeekendInfo.SeriesID` (un número); el nombre no viaja en la
-telemetría. Como la línea roja es no inventar, la franja de arriba del
-overlay enseña el nombre si el ID está en `series.json` (versionado, una
-entrada por serie: `{"447": "GT3 Regional Europe"}`) y si no dice
-"Serie 447 (ponle nombre en series.json)" y lo canta en
-`sesiones/overlay.log` en la primera foto. Los incidentes por coche vienen de
+**El overlay NO enseña el nombre de la serie, y es una decisión, no una
+carencia.** iRacing solo publica `WeekendInfo.SeriesID` (un número); el nombre
+no viaja en la telemetría, así que la primera versión lo traducía con un
+`series.json` local. Rodando (ago-2026) Sergio lo pidió fuera: el fichero
+estaba vacío, así que cada vez que encendía el overlay leía "Serie 447 (ponle
+nombre en series.json)" en mitad de la pantalla. Un catálogo que hay que
+rellenar a mano **no es automático, es un recordatorio delante de la pista**, y
+la alternativa (poner el circuito, que sí da el SDK) no era lo que quería. Se
+quitaron la franja, `standings.series_name` y el `series.json`. **El campo
+`SessionSnapshot.series_id` se queda** aunque no se pinte: las grabaciones de
+`sesiones/` lo llevan y `from_json` reventaría sin él. Lo vigilan
+`test_el_nombre_de_la_serie_no_se_traduce_a_mano` y
+`test_los_incidentes_y_el_id_de_serie_viajan_en_la_foto`. Si algún día se
+quiere de verdad, la única fuente real es la API web de iRacing (con login),
+no el SDK. Los incidentes por coche vienen de
 `DriverInfo.Drivers[].CurDriverIncidentCount` (`CarState.incidents`, columna
 INC; ámbar ≥ 8x, rojo ≥ 12x). Boceto al día en Pencil: frame "Overlay v2 —
 clasificación + relative (en juego)".
@@ -584,8 +592,9 @@ bordes.
 
 **Overlay: clasificación validada en carrera (ago-2026, "me encanta"); relative
 estrenado ("a priori todo bien") y ajustado con su feedback: segundos por
-`CarIdxEstTime`, cabecera sin el chip "RELATIVE", incidentes, franja de serie
-(`series.json`). Falta ver esa segunda ronda en el PC.** Tras la carrera Sergio pidió (1) un relative
+`CarIdxEstTime`, cabecera sin el chip "RELATIVE" e incidentes (la franja de
+serie se probó y se quitó, ver decisiones). Falta ver esa segunda ronda en el
+PC.** Tras la carrera Sergio pidió (1) un relative
 respecto a él, (2) el orden en vivo (ver decisiones) y (3) la estética de
 RaceLab/estilo tarjetas: cada clase en su tarjeta grafito con cabecera
 (chip de clase, coches, vueltas, tiempo, temperaturas, SoF), chip de

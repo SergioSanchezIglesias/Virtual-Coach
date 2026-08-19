@@ -422,19 +422,15 @@ def test_sin_est_time_el_relative_cae_a_distancia():
     assert rows[0].rel_s == pytest.approx(6.0)
 
 
-def test_los_incidentes_y_la_serie_viajan_en_la_foto():
+def test_los_incidentes_y_el_id_de_serie_viajan_en_la_foto():
+    # series_id se sigue grabando aunque el overlay ya no lo pinte: las
+    # grabaciones de sesiones/ lo llevan y from_json reventaria sin el campo.
     snap = _snap([_car(0, 1, "A", 1, 4000, 1, incidents=7, is_me=True)], series_id=447)
     back = SessionSnapshot.from_json(snap.to_json())
     assert back.cars[0].incidents == 7 and back.series_id == 447
 
 
-def test_el_nombre_de_la_serie_sale_de_un_fichero_local(tmp_path):
-    # El SDK solo da SeriesID (numero): el nombre lo pone un series.json que
-    # se rellena una vez por serie. Sin entrada, None: el overlay lo canta.
-    f = tmp_path / "series.json"
-    assert st.series_name(447, f) is None
-    f.write_text('{"447": "GT3 Regional Europe"}', encoding="utf-8")
-    assert st.series_name(447, f) == "GT3 Regional Europe"
-    assert st.series_name(0, f) is None
-    f.write_text("{basura")
-    assert st.series_name(447, f) is None
+def test_el_nombre_de_la_serie_no_se_traduce_a_mano():
+    # El SDK solo da SeriesID (numero). Un catalogo local que hay que rellenar
+    # a mano no es automatico: se quito en vez de pedirlo en cada sesion.
+    assert not hasattr(st, "series_name")

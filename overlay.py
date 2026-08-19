@@ -394,25 +394,16 @@ class StandingsPanel(Panel):
             y += CARD_GAP * s
 
     def _title(self, snap: SessionSnapshot) -> float:
-        """Serie (de series.json), tipo de sesion y temperaturas."""
+        """Tipo de sesion y temperaturas. El nombre de la serie NO sale del
+        SDK (solo el SeriesID) y no se pinta: un hueco que hay que rellenar a
+        mano no es automatico, es un recordatorio en mitad de la pista."""
         s = self.s
         h = H_TITLE * s
         self._card(0, 0, self.w * s, h)
         cy = h / 2
         kind = {"Race": "Carrera", "Practice": "Práctica", "Open Qualify": "Clasificación",
                 "Lone Qualify": "Clasificación", "Warmup": "Warmup"}.get(snap.session_type, snap.session_type)
-        serie = st.series_name(snap.series_id)
-        if serie:
-            self._text(PAD * s, cy, serie, F_SMALL, "bold", TEXT)
-            x = PAD * s + (len(serie) * 6.6 + 10) * s
-        elif snap.series_id:
-            # Sin nombre no se inventa: se dice el ID para que se anada.
-            self._text(PAD * s, cy, f"Serie {snap.series_id} (ponle nombre en series.json)",
-                       F_SMALL, fill=TEXT_DIM)
-            x = PAD * s + 250 * s
-        else:
-            x = PAD * s
-        self._text(x, cy, kind, F_SMALL, "bold", TEXT_DIM)
+        self._text(PAD * s, cy, kind, F_SMALL, "bold", TEXT)
         if snap.air_temp is not None and snap.track_temp is not None:
             self._text((self.w - PAD) * s, cy, f"aire {snap.air_temp:.0f}°  ·  pista {snap.track_temp:.0f}°",
                        F_SMALL, fill=TEXT_DIM, anchor="e")
@@ -609,9 +600,6 @@ def _feed(source, feed: Feed, recorder: SessionRecorder | None) -> None:
             n += 1
             if n == 1:
                 print(f"[overlay] primera foto: {len(snap.cars)} coches, sesion {snap.session_type}", flush=True)
-                if snap.series_id and not st.series_name(snap.series_id):
-                    print(f"[overlay] serie {snap.series_id} sin nombre: anadela a series.json "
-                          f"({{\"{snap.series_id}\": \"Nombre de la serie\"}})", flush=True)
         feed.set_status("Fin de la grabación")
     except BaseException as exc:  # que el hilo no muera en silencio
         print(f"[overlay] fuente parada: {type(exc).__name__}: {exc}", flush=True)
