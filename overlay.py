@@ -26,6 +26,7 @@ import json
 import sys
 import threading
 import tkinter as tk
+from contextlib import suppress
 from pathlib import Path
 from tkinter import font as tkfont
 
@@ -63,13 +64,11 @@ def load_pos(path: Path = POS_FILE, view: str = "standings") -> tuple[int, int] 
 def save_pos(x: int, y: int, path: Path = POS_FILE, view: str = "standings") -> None:
     """Se guarda al SOLTAR el raton tras arrastrar, no al cerrar: la GUI mata
     el proceso con terminate() y un guardado al cierre nunca llegaria."""
-    try:
+    with suppress(OSError):
         d = _read_pos_file(path)
         d[view] = {"x": int(x), "y": int(y)}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(d), encoding="utf-8")
-    except OSError:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -110,10 +109,11 @@ PAD = 10
 GAPX = 8
 CARD_GAP = 6
 H_HDR, H_ROW, H_MORE = 28, 24, 16
+H_PLAYER_ROW = 34
 R_CARD = 8
 H_TITLE = 22  # franja de arriba: serie, sesion, temperaturas
 COLS = [("POS", 22, "w"), ("#", 34, "w"), ("PILOTO", 112, "w"),
-        ("LIC", 46, "w"), ("iR", 40, "e"), ("INC", 28, "e"), ("GAP", 50, "e"), ("INT", 46, "e"),
+        ("LIC", 46, "w"), ("iR", 40, "e"), ("INC", 28, "e"),
         ("ÚLTIMA", 68, "e"), ("MEJOR", 68, "e")]
 REL_COLS = [("POS", 22, "w"), ("#", 34, "w"), ("PILOTO", 112, "w"),
             ("CLASE", 44, "w"), ("LIC", 46, "w"), ("iR", 40, "e"), ("REL", 52, "e")]
@@ -122,6 +122,14 @@ F_ROW, F_SMALL, F_TINY = 12, 11, 9
 
 def _width(cols) -> int:
     return 2 * PAD + sum(w for _, w, _ in cols) + GAPX * (len(cols) - 1)
+
+
+def _relative_row_height(row: st.RelRow) -> int:
+    return H_PLAYER_ROW if row.is_me else H_ROW
+
+
+def _relative_height(rows: list[st.RelRow]) -> int:
+    return H_HDR + sum(_relative_row_height(row) for row in rows)
 
 
 def _pick_font(candidates: list[str], fallback: str) -> str:
@@ -147,10 +155,8 @@ def _lic(lic: str) -> tuple[str, str] | None:
         return None
     letter = lic[0].upper()
     rest = lic[1:].strip()
-    try:
+    with suppress(ValueError):
         rest = f"{float(rest):.1f}"
-    except ValueError:
-        pass
     return f"{letter} {rest}".strip(), LIC_COLORS.get(letter, TEXT_DIM)
 
 
@@ -158,8 +164,10 @@ def _mix(color: str, base: str, k: float) -> str:
     """color*k + base*(1-k). Tk no tiene alpha en los fills."""
     r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
     br, bg_, bb = (int(base[i:i + 2], 16) for i in (1, 3, 5))
-    m = lambda a, c: int(c + (a - c) * k)
-    return f"#{m(r, br):02x}{m(g, bg_):02x}{m(b, bb):02x}"
+    def mix_channel(a: int, c: int) -> int:
+        return int(c + (a - c) * k)
+
+    return f"#{mix_channel(r, br):02x}{mix_channel(g, bg_):02x}{mix_channel(b, bb):02x}"
 
 
 # ---------------------------------------------------------------------------
@@ -240,14 +248,12 @@ class Panel:
     # -- ventana ------------------------------------------------------------
 
     def _transparent(self, win) -> None:
-        try:
+        with suppress(tk.TclError):
             if sys.platform == "win32":
                 win.attributes("-transparentcolor", KEY)
                 win.attributes("-alpha", 0.94)
             elif sys.platform == "darwin":
                 win.attributes("-alpha", 0.94)
-        except tk.TclError:
-            pass
 
     def _drag_start(self, e):
         self._drag = (e.x_root - self.win.winfo_x(), e.y_root - self.win.winfo_y())
@@ -307,15 +313,21 @@ class Panel:
                x1 - r, y1, x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
         return self.canvas.create_polygon(pts, smooth=True, **kw)
 
-    def _card(self, x0, y0, x1, y1, hdr_h: float = 0.0):
+    def _card(self, x0, y0, x1, y1, hdr_h: float = 0.0, accent: str | None = None):
         s = self.s
         self._rrect(x0, y0, x1, y1, R_CARD * s, fill=BG, outline=BORDER)
         if hdr_h:
-            # cabecera un pelin mas clara, con las esquinas de arriba redondas
-            self._rrect(x0, y0, x1, y0 + hdr_h + R_CARD * s, R_CARD * s, fill=BG_HDR, outline="")
+            # La clase firma la tarjeta sin convertir la cabecera en un bloque chillón.
+            header_bg = _mix(accent, BG_HDR, 0.10) if accent else BG_HDR
+            self._rrect(x0, y0, x1, y0 + hdr_h + R_CARD * s, R_CARD * s, fill=header_bg, outline="")
             self.canvas.create_rectangle(x0 + 1, y0 + hdr_h, x1 - 1, y0 + hdr_h + R_CARD * s,
                                          fill=BG, outline="")
             self.canvas.create_line(x0 + 1, y0 + hdr_h, x1 - 1, y0 + hdr_h, fill=BORDER)
+            if accent:
+                self.canvas.create_rectangle(x0 + R_CARD * s, y0 + 1, x1 - R_CARD * s,
+                                             y0 + 3 * s, fill=accent, outline="")
+                self.canvas.create_rectangle(x0 + 1, y0 + 3 * s, x0 + 3 * s,
+                                             y1 - R_CARD * s, fill=accent, outline="")
 
     def _text(self, x, y, s, size=13, weight="normal", fill=TEXT, mono=False, anchor="w") -> float:
         """Pinta y devuelve el ancho REAL del texto. La cabecera encadena
@@ -353,14 +365,18 @@ class Panel:
                 return color
         return PALETTE[i % len(PALETTE)]
 
-    def _row_bg(self, y: float, is_me: bool, alt: bool, x1: float) -> None:
+    def _row_bg(self, y: float, is_me: bool, alt: bool, x1: float, height: int = H_ROW) -> None:
         s = self.s
         c = self.canvas
+        row_end = y + height * s
         if is_me:
-            c.create_rectangle(1, y, x1 - 1, y + H_ROW * s, fill=_mix(ACCENT, BG, 0.14), outline="")
-            c.create_rectangle(1, y, 3 * s, y + H_ROW * s, fill=ACCENT, outline="")
+            c.create_rectangle(1, y, x1 - 1, row_end, fill=_mix(ACCENT, BG, 0.22), outline="")
+            c.create_rectangle(1, y, 4 * s, row_end, fill=ACCENT, outline="")
+            if height > H_ROW:
+                c.create_line(4 * s, y, x1 - 1, y, fill=_mix(ACCENT, BG, 0.60))
+                c.create_line(4 * s, row_end, x1 - 1, row_end, fill=_mix(ACCENT, BG, 0.60))
         elif alt:
-            c.create_rectangle(1, y, x1 - 1, y + H_ROW * s, fill=BG_ALT, outline="")
+            c.create_rectangle(1, y, x1 - 1, row_end, fill=BG_ALT, outline="")
 
     def _ident(self, cols, cy, car, pos_text: str, pos_color: str, bold: bool,
                name_color: str = TEXT, lic_slot: int = 3) -> None:
@@ -398,13 +414,13 @@ class StandingsPanel(Panel):
         rows_by_block = [st.visible_rows(b, self.top, self.around) for b in blocks]
         height = H_TITLE + CARD_GAP + sum(
             H_HDR + H_ROW * len(r) + (H_MORE if len(r) < b.n else 0)
-            for b, r in zip(blocks, rows_by_block)
+            for b, r in zip(blocks, rows_by_block, strict=True)
         ) + CARD_GAP * max(0, len(blocks) - 1)
         c.config(width=self.w * s, height=max(height, H_HDR) * s)
         c.delete("all")
         y = self._title(snap) + CARD_GAP * s
         self._n_blocks = len(blocks)
-        for i, (b, rows) in enumerate(zip(blocks, rows_by_block)):
+        for i, (b, rows) in enumerate(zip(blocks, rows_by_block, strict=True)):
             self._block_index = i
             y = self._class(snap, b, rows, self._class_color(b.class_name, i), y)
             y += CARD_GAP * s
@@ -436,9 +452,9 @@ class StandingsPanel(Panel):
 
     def _class(self, snap, b: st.ClassBlock, rows, color: str, y: float) -> float:
         s = self.s
-        c = self.canvas
         card_h = H_HDR + H_ROW * len(rows) + (H_MORE if len(rows) < b.n else 0)
-        self._card(0, y, self.w * s, y + card_h * s, hdr_h=H_HDR * s)
+
+        self._card(0, y, self.w * s, y + card_h * s, hdr_h=H_HDR * s, accent=color)
         # Cabecera de la tarjeta
         cy = y + H_HDR * s / 2
         x = PAD * s
@@ -487,23 +503,11 @@ class StandingsPanel(Panel):
         inc_col = BRAKE if car.incidents >= 12 else (VOICE if car.incidents >= 8 else TEXT_DIM)
         self._text(x1, cy, st.fmt_inc(car.incidents), F_SMALL, "bold" if me else "normal",
                    inc_col, mono=True, anchor="e")
-        (_, x0, x1, _) = cols[6]
-        if car.on_pit_road:
-            self._chip(x0, cy, "PIT", TEAL, w=(x1 - x0) / s)
-        elif r.pos == 1:
-            self._text(x1, cy, "GAP", F_TINY, "bold", TEXT_FAINT, mono=True, anchor="e")
-        else:
-            self._text(x1, cy, st.fmt_gap(r.gap, False, r.laps_down), F_ROW, mono=True, anchor="e")
-        (_, _, x1, _) = cols[7]
-        if r.pos == 1:
-            self._text(x1, cy, "INT", F_TINY, "bold", TEXT_FAINT, mono=True, anchor="e")
-        else:
-            self._text(x1, cy, st.fmt_gap(r.interval), F_SMALL, fill=TEXT_DIM, mono=True, anchor="e")
-        (_, _, x1, _) = cols[8]
+        (_, _, x1, _) = cols[6]
         pb = car.last_lap > 0 and car.best_lap > 0 and abs(car.last_lap - car.best_lap) < 1e-3
         self._text(x1, cy, st.fmt_lap(car.last_lap), F_ROW,
                    fill=ACCENT if pb else TEXT, mono=True, anchor="e")
-        (_, _, x1, _) = cols[9]
+        (_, _, x1, _) = cols[7]
         self._text(x1, cy, st.fmt_lap(car.best_lap), F_ROW,
                    fill=MANAGE if r.fastest else TEXT_DIM, mono=True, anchor="e")
 
@@ -529,19 +533,19 @@ class RelativePanel(Panel):
             self.draw_waiting("Relative: no estás en la sesión")
             return
         class_index = {b.class_id: i for i, b in enumerate(blocks)}
-        height = H_HDR + H_ROW * len(rows)
-        c.config(width=self.w * s, height=height * s)
-        c.delete("all")
-        self._card(0, 0, self.w * s, height * s, hdr_h=H_HDR * s)
-        cy = H_HDR * s / 2
-        x = PAD * s
         me = snap.me
         mine = next((b for b in blocks if b.is_mine), None)
+        accent = self._class_color(mine.class_name, class_index.get(mine.class_id, 0)) if mine else ACCENT
+        height = _relative_height(rows)
+        c.config(width=self.w * s, height=height * s)
+        c.delete("all")
+        self._card(0, 0, self.w * s, height * s, hdr_h=H_HDR * s, accent=accent)
+        cy = H_HDR * s / 2
+        x = PAD * s
         if me and mine:
             my = next((r for r in mine.rows if r.is_me), None)
             if mine.class_name:
-                x += self._chip(x, cy, mine.class_name[:10],
-                                self._class_color(mine.class_name, class_index.get(mine.class_id, 0)),
+                x += self._chip(x, cy, mine.class_name[:10], accent,
                                 size=F_TINY + 2, h=18) + 10 * s
             if my is not None:
                 x += self._text(x, cy, f"P{my.pos}", F_ROW, "bold", ACCENT, mono=True) + 6 * s
@@ -552,13 +556,14 @@ class RelativePanel(Panel):
         self._text((self.w - PAD) * s, cy, _laps_text(snap), F_ROW, "bold", TEXT_DIM, anchor="e")
         y = H_HDR * s
         for i, r in enumerate(rows):
-            self._row_bg(y, r.is_me, i % 2 == 1, self.w * s)
-            self._row(r, y, class_index)
-            y += H_ROW * s
+            row_h = _relative_row_height(r)
+            self._row_bg(y, r.is_me, i % 2 == 1, self.w * s, row_h)
+            self._row(r, y, class_index, row_h)
+            y += row_h * s
 
-    def _row(self, r: st.RelRow, y: float, class_index: dict[int, int]) -> None:
+    def _row(self, r: st.RelRow, y: float, class_index: dict[int, int], row_h: int = H_ROW) -> None:
         s = self.s
-        cy = y + H_ROW * s / 2
+        cy = y + row_h * s / 2
         car = r.car
         cols = list(self._cols())
         color = self._class_color(car.class_name, class_index.get(car.class_id, 0))
@@ -578,7 +583,9 @@ class RelativePanel(Panel):
         self._ident(cols, cy, car, pos_txt, ACCENT if r.is_me else color, r.is_me,
                     name_color=name_col, lic_slot=4)
         (_, x0, x1, _) = cols[3]
-        if car.class_name:
+        if r.is_me:
+            self._chip(x0, cy, "TÚ", ACCENT, filled=True, w=(x1 - x0) / s)
+        elif car.class_name:
             self._chip(x0, cy, car.class_name[:6], color, w=(x1 - x0) / s)
         (_, _, x1, _) = cols[5]
         self._text(x1, cy, st.fmt_ir(car.irating), F_SMALL, "bold", TEXT_DIM, mono=True, anchor="e")
@@ -600,12 +607,10 @@ def _feed(source, feed: Feed, recorder: SessionRecorder | None) -> None:
     import traceback
 
     try:
-        n = 0
-        for snap in source.snapshots():
+        for n, snap in enumerate(source.snapshots(), start=1):
             if recorder:
                 recorder.write(snap)
             feed.push(snap)
-            n += 1
             if n == 1:
                 print(f"[overlay] primera foto: {len(snap.cars)} coches, sesion {snap.session_type}", flush=True)
         feed.set_status("Fin de la grabación")
