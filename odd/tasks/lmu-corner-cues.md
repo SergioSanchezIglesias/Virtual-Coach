@@ -49,7 +49,9 @@ The driver needs low-distraction, repeatable braking and exit references while d
 - Feature branch: `feature/lmu-corner-cues`.
 - T1 committed as `04974dc feat(lmu): add corner cue engine` (358 authored lines).
 - T2 committed as `07e41d5 feat(lmu): add telemetry cue runtime` (335 authored lines).
-- T3 is complete pending its documentation/profile work-unit commit.
+- T3 committed as `d1e1640 docs(lmu): add corner cue setup guide` (128 authored lines).
+- All host-side implementation tasks are complete.
+- Native assessment unavailable: the package-local Gentle AI binary is missing; independent verification was used for every work unit.
 
 ## Next step
-Commit the verified T3 work unit, then perform manual Windows/LMU acceptance validation.
+Perform manual Windows/LMU acceptance validation with a calibrated profile.
