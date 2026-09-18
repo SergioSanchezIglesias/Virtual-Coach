@@ -19,7 +19,7 @@ The driver needs low-distraction, repeatable braking and exit references while d
 - No input sent to LMU.
 - Avoid duplicate cues across polling frames and reset correctly on a new lap/session.
 - TDD mode: disabled (no existing project configuration or test runner); use focused ordinary checks.
-- Delivery strategy: ask-on-risk; forecast under 400 authored changed lines.
+- Delivery strategy: feature-branch-chain, selected by the user after T1 reached 358 authored lines. Each subsequent work unit stays as a separate commit on `feature/lmu-corner-cues`.
 
 ## Tasks
 
@@ -31,12 +31,12 @@ The driver needs low-distraction, repeatable braking and exit references while d
   - Checks: `python -m unittest discover -s tests -v`.
   - Evidence: writer check and independent verification passed: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v` (11 tests) and a `PYTHONPATH=src` API smoke test on Python 3.9.6. Python >=3.9 compatibility corrected without changing cue behavior.
 
-- [ ] **T2 — Add LMU reader, audio output, and runnable CLI**
+- [x] **T2 — Add LMU reader, audio output, and runnable CLI**
   - Route: delegated (`gentle-ai-worker`); trigger: multi-file write.
   - Add an adapter over `pyLMUSharedMemory`, local-player lookup, polling loop, and Windows audio sink.
   - Acceptance: CLI can connect to LMU when the optional dependency is installed; missing telemetry/dependency fails with an actionable message.
   - Checks: `python -m unittest discover -s tests -v`; `python -m lmu_corner_cues --help`.
-  - Evidence: pending.
+  - Evidence: independent recheck passed: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v` (25 tests). The CLI help check passed. Live LMU/Windows sound validation is intentionally recorded as a manual acceptance check for T3.
 
 - [ ] **T3 — Provide a sample profile and operating guide**
   - Route: delegated (`gentle-ai-worker`); trigger: multi-file write.
@@ -47,7 +47,8 @@ The driver needs low-distraction, repeatable braking and exit references while d
 
 ## Progress
 - Feature branch: `feature/lmu-corner-cues`.
-- No implementation has started.
+- T1 committed as `04974dc feat(lmu): add corner cue engine` (358 authored lines).
+- T2 is in progress.
 
 ## Next step
-Delegate T1 with the precise package and test surfaces.
+Delegate T2 with bounded runtime surfaces.
