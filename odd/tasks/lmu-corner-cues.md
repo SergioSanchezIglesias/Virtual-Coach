@@ -38,17 +38,18 @@ The driver needs low-distraction, repeatable braking and exit references while d
   - Checks: `python -m unittest discover -s tests -v`; `python -m lmu_corner_cues --help`.
   - Evidence: independent recheck passed: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v` (25 tests). The CLI help check passed. Live LMU/Windows sound validation is intentionally recorded as a manual acceptance check for T3.
 
-- [ ] **T3 — Provide a sample profile and operating guide**
+- [x] **T3 — Provide a sample profile and operating guide**
   - Route: delegated (`gentle-ai-worker`); trigger: multi-file write.
   - Add a documented sample profile and explain LMU setup, calibration and limitations.
   - Acceptance: a user can install, configure, and run the MVP without source inspection.
   - Checks: `python -m lmu_corner_cues --help`; JSON parse check for the sample profile.
-  - Evidence: pending.
+  - Evidence: independent host-side validation passed: CLI help and JSON/profile round-trip check. Guide corrected to describe whitespace-stripped telemetry identifiers. Windows/LMU live connection and audio remain manual acceptance checks.
 
 ## Progress
 - Feature branch: `feature/lmu-corner-cues`.
 - T1 committed as `04974dc feat(lmu): add corner cue engine` (358 authored lines).
-- T2 is in progress.
+- T2 committed as `07e41d5 feat(lmu): add telemetry cue runtime` (335 authored lines).
+- T3 is complete pending its documentation/profile work-unit commit.
 
 ## Next step
-Delegate T2 with bounded runtime surfaces.
+Commit the verified T3 work unit, then perform manual Windows/LMU acceptance validation.

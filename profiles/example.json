@@ -1,0 +1,12 @@
+{
+  "circuit": "example-track",
+  "vehicle": "example-vehicle",
+  "markers": [
+    {
+      "name": "Fictitious corner — not calibrated",
+      "BRAKE": 100.0,
+      "RELEASE_BRAKE": 150.0,
+      "THROTTLE": 200.0
+    }
+  ]
+}
