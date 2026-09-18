@@ -2,6 +2,27 @@
 
 A Windows Python MVP that reads Le Mans Ultimate (LMU) native telemetry and plays three sounds at stored lap-distance markers. It never sends driving inputs to the game. **These are fixed references, not braking advice or an adaptive coach.**
 
+## Guía rápida (español)
+
+En tu PC Windows donde juegas a LMU:
+
+1. Instala Python 3.9 o superior y Git, abre PowerShell en la carpeta del proyecto y crea el entorno:
+   ```powershell
+   py -3 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install .
+   .\.venv\Scripts\python.exe -m pip install "git+https://github.com/TinyPedal/pyLMUSharedMemory.git"
+   ```
+2. En LMU activa **Settings → Gameplay → Enable Plugins** y reinicia el juego.
+3. Copia `profiles/example.json` a un archivo propio. El ejemplo es ficticio: reemplaza `circuit`, `vehicle` y todos los metros por referencias calibradas para tu combinación real de circuito, coche, neumáticos, combustible y condiciones.
+4. Entra en una sesión de conducción con el coche local y ejecuta:
+   ```powershell
+   .\.venv\Scripts\python.exe -m lmu_corner_cues profiles\mi-perfil.json
+   ```
+5. Empieza antes del primer marcador y comprueba una vuelta segura: tono grave para frenar, par descendente para soltar freno y tono agudo para volver al gas. Detén el proceso con `Ctrl+C`.
+6. Si aparece un error de coincidencia, usa exactamente el circuito y vehículo/clase que muestra el programa. Recalibra el perfil cuando cambien el coche, setup, combustible, neumáticos, tiempo o agarre.
+
+No uses las señales como una orden de conducción: son referencias fijas y no consideran velocidad, tráfico, lluvia ni estado de los neumáticos. La validación completa en LMU/Windows sigue siendo manual.
+
 ## Set up on your Windows LMU PC
 
 Use Python **3.9 or newer**. Open PowerShell in this project's directory:
