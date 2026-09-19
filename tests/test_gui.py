@@ -1,21 +1,23 @@
 """Headless lifecycle coverage: no Windows, Tk display, or LMU required."""
+import unittest
 from contextlib import nullcontext
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
-import unittest
+from typing import Any
 from unittest.mock import Mock, patch
 
 from lmu_corner_cues import application
-from lmu_corner_cues.gui import Controller, Window, launch
 from lmu_corner_cues.__main__ import main
+from lmu_corner_cues.gui import CALIBRATION_WARNING, Controller, Window, launch
+from lmu_corner_cues.profile import CornerMarker, Profile
 
 
 class GuiTests(unittest.TestCase):
     def services(self, **overrides):
-        values = dict(probe=Mock(return_value="session"),
-                      record=Mock(return_value=Path("recordings/lap.json")),
-                      stopped_flow_guard=nullcontext)
+        values = {"probe": Mock(return_value="session"),
+                  "record": Mock(return_value=Path("recordings/lap.json")),
+                  "stopped_flow_guard": nullcontext}
         values.update(overrides)
         return SimpleNamespace(**values)
 
@@ -153,10 +155,14 @@ class GuiTests(unittest.TestCase):
         self.assertIsNone(controller.state.session)
 
     def test_window_poll_schedules_and_destroys_only_after_cleanup(self):
-        window = Window.__new__(Window)
+        window: Any = Window.__new__(Window)
         window.root = Mock()
         window.controller = Controller(self.services(), Mock())
-        for name in ("phase", "status", "error", "session", "check", "start", "entry", "cancel_button"):
+        window.loaded_draft = None
+        window.edit_widgets = []
+        for name in ("phase", "status", "error", "session", "check", "start", "entry", "cancel_button",
+                     "warning", "output_entry", "save_button", "selector", "refresh_button",
+                     "cue_start", "cue_stop", "cue_status"):
             setattr(window, name, Mock())
         window.poll()
         window.root.after.assert_called_once_with(50, window.poll)
@@ -172,6 +178,162 @@ class GuiTests(unittest.TestCase):
         window.poll()
         window.root.destroy.assert_called_once()
         window.root.after.assert_not_called()
+
+    def reviewed_controller(self, **overrides):
+        profile = Profile("Track", (CornerMarker("Turn", 10, 20, 30),), "Car")
+        services = self.services(load_draft=Mock(return_value=(profile, "GT3")),
+                                 edit_profile=application.edit_profile,
+                                 save_profile=Mock(return_value=Path("profiles/lap.json")),
+                                 discover_profiles=Mock(return_value=[Path("profiles/lap.json")]),
+                                 **overrides)
+        controller = Controller(services, Mock(), Mock())
+        controller.state.draft = Path("recordings/lap.json")
+        self.assertTrue(controller.review_draft())
+        return controller
+
+    def test_review_save_validation_and_confirmation(self):
+        controller = self.reviewed_controller()
+        confirm = Mock(return_value=True)
+        rows = [["Turn", "10", "20", "30"]]
+        self.assertFalse(controller.save("lap", [["Turn", "nan", "20", "30"]], confirm, confirm))
+        confirm.assert_not_called()
+        controller.services.save_profile.assert_not_called()
+        self.assertIn("finite", controller.state.error)
+        self.assertFalse(controller.save("lap", rows, Mock(return_value=False), confirm))
+        controller.services.save_profile.assert_not_called()
+        self.assertTrue(controller.save("lap", rows, confirm, confirm))
+        self.assertIn(CALIBRATION_WARNING, confirm.call_args.args[0])
+        controller.services.save_profile.assert_called_once_with(
+            "lap", controller.state.review, confirmed=True)
+        self.assertEqual(controller.state.profiles, (Path("profiles/lap.json"),))
+
+    def test_overwrite_requires_separate_confirmation(self):
+        for replace in (False, True):
+            controller = self.reviewed_controller()
+            controller.services.save_profile.side_effect = [FileExistsError(), Path("profiles/lap.json")]
+            overwrite = Mock(return_value=replace)
+            self.assertEqual(controller.save("lap", [["Turn", "10", "20", "30"]],
+                                             Mock(return_value=True), overwrite), replace)
+            overwrite.assert_called_once()
+            self.assertEqual(controller.services.save_profile.call_count, 2 if replace else 1)
+            if replace:
+                self.assertTrue(controller.services.save_profile.call_args.kwargs["overwrite"])
+
+    def test_save_rechecks_close_after_dialog(self):
+        controller = self.reviewed_controller()
+        def confirm(text):
+            controller.close()
+            return True
+        self.assertFalse(controller.save("lap", [["Turn", "10", "20", "30"]], confirm, Mock()))
+        controller.services.save_profile.assert_not_called()
+
+    def test_recording_excludes_review_save_and_cues(self):
+        controller = self.reviewed_controller()
+        controller.refresh_profiles()
+        controller.state.busy = True
+        self.assertFalse(controller.review_draft())
+        self.assertFalse(controller.save("lap", [], Mock(), Mock()))
+        self.assertFalse(controller.start_cues(Path("profiles/lap.json")))
+        self.assertFalse(controller.refresh_profiles())
+        controller.services.save_profile.assert_not_called()
+
+    def test_cue_lifecycle_cancellation_and_close_wait_for_cleanup(self):
+        for closing in (False, True):
+            started, cleaned = Event(), Event()
+            def run_cues(*args, cancel, report, started=started, cleaned=cleaned):
+                try:
+                    report("Active")
+                    started.set()
+                    cancel.wait(2)
+                    raise application.OperationCancelled()
+                finally:
+                    cleaned.set()
+            controller = self.reviewed_controller(run_cues=run_cues, load_profile=Mock())
+            controller.refresh_profiles()
+            self.assertFalse(controller.start_cues(Path("recordings/lap.json")))
+            self.assertTrue(controller.start_cues(Path("profiles/lap.json")))
+            self.assertTrue(started.wait(2))
+            self.assertEqual(controller.state.cue_status, "Starting")
+            controller.drain()
+            self.assertEqual(controller.state.cue_status, "Active")
+            self.assertFalse(controller.record("other"))
+            self.assertFalse(controller.review_draft())
+            self.assertFalse(controller.save("lap", [], Mock(), Mock()))
+            if closing:
+                controller.close()
+                self.assertFalse(controller.ready_to_close)
+            else:
+                controller.stop_cues()
+            self.finish(controller)
+            self.assertTrue(cleaned.is_set())
+            self.assertEqual(controller.state.cue_status, "Stopped")
+            self.assertEqual(controller.ready_to_close, closing)
+
+    def test_cue_failures_and_thread_start_recovery(self):
+        for failure in ("Profile mismatch", "Audio failed", "Missing local player"):
+            controller = self.reviewed_controller(load_profile=Mock(),
+                run_cues=Mock(side_effect=RuntimeError(failure)))
+            controller.refresh_profiles()
+            controller.start_cues(Path("profiles/lap.json"))
+            self.finish(controller)
+            self.assertEqual(controller.state.cue_status, "Error")
+            self.assertIn(failure, controller.state.error)
+            self.assertFalse(controller.state.busy)
+        controller = self.reviewed_controller()
+        controller.refresh_profiles()
+        with patch("lmu_corner_cues.gui.Thread.start", side_effect=RuntimeError("no thread")):
+            self.assertFalse(controller.start_cues(Path("profiles/lap.json")))
+        controller.drain()
+        self.assertEqual(controller.state.cue_status, "Error")
+        controller.close()
+        self.assertTrue(controller.ready_to_close)
+
+    def test_window_save_passes_text_rows_and_separate_dialogs(self):
+        window: Any = Window.__new__(Window)
+        window.root = Mock()
+        window.controller = self.reviewed_controller()
+        window.output_name = Mock(get=Mock(return_value="chosen"))
+        window.rows = [[Mock(get=Mock(return_value=value)) for value in ("Edited", "11", "22", "33")]]
+        dialogs = SimpleNamespace(askyesno=Mock(return_value=True))
+        with patch.dict("sys.modules", {"tkinter": SimpleNamespace(messagebox=dialogs)}):
+            window.save()
+        dialogs.askyesno.assert_called_once()
+        self.assertIn(CALIBRATION_WARNING, dialogs.askyesno.call_args.args[1])
+        saved = window.controller.services.save_profile.call_args
+        self.assertEqual(saved.args[0], "chosen")
+        self.assertEqual(saved.args[1].markers[0], CornerMarker("Edited", 11, 22, 33))
+
+    def test_render_and_save_untouched_distances_is_lossless(self):
+        cases = (
+            (1.2345678901234567, 2.345678901234567, 3.456789012345678),
+            (1000.0000000000001, 1000.0000000000002, 1000.0000000000003),
+            (5e-324, 1e-323, 1.5e-323),
+            (1e100, 1.0000000000000002e100, 1.0000000000000004e100),
+            (2**53, 2**53 + 1, 2**53 + 2),
+        )
+        for distances in cases:
+            with self.subTest(distances=distances):
+                window: Any = Window.__new__(Window)
+                window.root = Mock()
+                window.table = Mock(winfo_children=Mock(return_value=[]))
+                window.controller = self.reviewed_controller()
+                original = Profile("Track", (CornerMarker("Turn", *distances),), "Car")
+                window.controller.state.review = original
+                window.output_name = Mock(get=Mock(return_value="lap"))
+                dialogs = SimpleNamespace(askyesno=Mock(return_value=True))
+                tk = SimpleNamespace(
+                    StringVar=lambda value: Mock(get=Mock(return_value=value)),
+                    ttk=SimpleNamespace(Label=Mock(), Entry=Mock()), messagebox=dialogs)
+                with patch.dict("sys.modules", {"tkinter": tk}):
+                    window.render_review()
+                    rendered = [value.get() for value in window.rows[0]]
+                    self.assertEqual(rendered, ["Turn", *(str(value) for value in distances)])
+                    window.save()
+                self.assertEqual(window.controller.state.error, "")
+                saved = window.controller.services.save_profile.call_args.args[1]
+                self.assertEqual(saved, original)
+                self.assertEqual(saved.to_json(), original.to_json())
+                dialogs.askyesno.assert_called_once()
 
     def test_gui_command_and_platform_guard(self):
         with patch("lmu_corner_cues.gui.launch") as gui:

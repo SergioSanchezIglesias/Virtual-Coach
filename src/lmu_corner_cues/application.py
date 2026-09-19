@@ -10,7 +10,7 @@ run on that same thread: GUI clients must enqueue messages, not touch widgets.
 from pathlib import Path
 from threading import Event
 
-from .profile import Profile
+from .profile import CornerMarker, Profile
 from .recording import draft_path, record
 from .runtime import OperationCancelled, run
 from .session import probe
@@ -19,12 +19,39 @@ from .wizard import _draft_profile, stopped_flow_guard
 # Domain orchestration is exported directly, preserving existing call contracts.
 __all__ = ["Event", "OperationCancelled", "probe", "record", "run",
            "load_draft", "load_profile", "save_profile", "discover_profiles",
-           "stopped_flow_guard"]
+           "stopped_flow_guard", "edit_profile", "run_cues"]
 
 
 def load_draft(path):
     """Return validated candidate Profile and observed class, still unverified."""
     return _draft_profile(path)
+
+
+def edit_profile(profile, rows):
+    """Convert editable text rows, then delegate all cue rules to the model."""
+    try:
+        return Profile(profile.circuit, tuple(
+            CornerMarker(name, *(float(value) for value in distances))
+            for name, *distances in rows
+        ), profile.vehicle)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"Invalid cue edits: {exc}") from exc
+
+
+def run_cues(profile, reader, sink, *, cancel, report):
+    """Report a connected runtime without exposing native reader details to Tk."""
+    class ReportingReader:
+        def connect(self):
+            reader.connect()
+            report("Active")
+
+        def read(self):
+            return reader.read()
+
+        def close(self):
+            reader.close()
+
+    return run(profile, ReportingReader(), sink, cancel=cancel)
 
 
 def load_profile(path):
