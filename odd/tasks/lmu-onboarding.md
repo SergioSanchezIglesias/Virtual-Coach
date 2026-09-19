@@ -50,7 +50,8 @@ Make `pip install .` sufficient for LMU Corner Cues, remove the unusable VCS ins
 ## Progress
 - T1 committed as `c704281 feat(lmu): bundle native telemetry reader`.
 - T2 committed as `2bb1dbf feat(lmu): add session probe and lap recorder`.
-- T3 is complete pending its work-unit commit.
+- T3 committed as `b70dc85 feat(lmu): add guided profile onboarding`.
+- T4 is the only remaining task and requires user-operated Windows/LMU validation.
 
 ## Next step
-Commit T3 and perform T4 manual Windows/LMU acceptance validation.
+On the Windows gaming PC: install with `pip install .`, run `session`, record a clean lap, create a profile with the stopped wizard, then confirm the three sounds while driving.
