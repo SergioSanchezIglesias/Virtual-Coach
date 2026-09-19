@@ -2,38 +2,40 @@
 
 Referencias sonoras por distancia de vuelta para Le Mans Ultimate en Windows. Lee la telemetría nativa; nunca envía controles al juego. **Son referencias fijas, no consejos de frenada ni un entrenador adaptativo.**
 
-## De la instalación a tu primera vuelta con señales
+## Inicio rápido en Windows: interfaz gráfica
 
-Necesitas Windows y Python **3.9 o superior**. Abre PowerShell en la carpeta del proyecto, usando el mismo entorno de Python para todos los comandos.
+Necesitas Windows y Python **3.9 o superior con Tcl/Tk (Tkinter)**. Abre PowerShell en la carpeta del proyecto y usa siempre el mismo entorno de Python:
 
-1. **Instala el proyecto** (sin dependencias externas de ejecución):
-   ```powershell
-   pip install .
-   ```
-2. Activa la salida nativa de LMU: **Settings → Gameplay → Enable Plugins**, reinicia el juego y entra en una sesión de práctica privada con el coche local. Si el ajuste difiere, consulta la configuración de telemetría de tu versión. No instales el antiguo plugin de memoria compartida de rFactor 2.
-3. **Con el coche detenido**, comprueba circuito, vehículo/clase y distancia observados:
-   ```powershell
-   python -m lmu_corner_cues session
-   ```
-4. **Inicia la grabación antes de conducir**:
-   ```powershell
-   python -m lmu_corner_cues record mi-vuelta
-   ```
-   Conduce una vuelta limpia y conservadora. El programa espera el siguiente paso por meta, graba una vuelta completa y termina automáticamente en el paso posterior. No pide ninguna entrada ni reproduce señales: **no leas ni uses el terminal mientras conduces**. Guarda `recordings/mi-vuelta.json` al terminar. Una grabación interrumpida o discontinua no produce un nuevo borrador.
-5. **Detén el coche y espera a que `record` termine**. Después abre el asistente:
-   ```powershell
-   python -m lmu_corner_cues profile create recordings/mi-vuelta.json
-   ```
-   Verás el circuito, vehículo/clase y todos los candidatos en metros desde el inicio de vuelta. Escribe `STOPPED` para confirmar que estás detenido. Para cada curva, pulsa Enter para aceptar el nombre y cada distancia, o escribe sus valores corregidos. Elige un nombre como `mi-perfil` y revisa el resumen. Solo `SAVE` guarda `profiles/mi-perfil.json`; `cancel`, Ctrl+C o fin de entrada cancelan sin guardar. El asistente no puede ejecutarse a la vez que otro comando `record` de esta aplicación.
-6. **Inicia las señales antes del primer marcador**, todavía detenido:
-   ```powershell
-   python -m lmu_corner_cues drive profiles/mi-perfil.json
-   ```
-   Comprueba una vuelta controlada: tono grave al frenar, par descendente al soltar freno y tono agudo al volver al gas. Detén el coche antes de usar Ctrl+C para cerrar el programa.
+```powershell
+python -m pip install .
+python -m lmu_corner_cues gui
+```
 
-**No necesitas editar JSON.** Los archivos JSON son artefactos de exportación: conserva el borrador para volver a revisarlo con el asistente y el perfil confirmado para conducir.
+La ventana puede abrirse sin LMU en ejecución. Después del lanzamiento, el flujo normal no necesita comandos ni edición de JSON. Los botones están en inglés.
 
-> **Borrador no verificado ni calibrado:** «vuelta limpia» significa únicamente continuidad de la telemetría observada. La aplicación no conoce la validez deportiva de la vuelta. Los candidatos automáticos no son puntos seguros de frenada; el asistente exige tu revisión, pero confirmar no demuestra su seguridad. `drive` rechaza los borradores. Si no se detecta ninguna secuencia completa, graba otra vuelta.
+1. **Conecta, con el coche detenido.** Activa en LMU **Settings → Gameplay → Enable Plugins**, reinicia el juego y entra en práctica privada con el coche local. Pulsa **Check connection** y comprueba circuito, vehículo, clase, vuelta y distancia. Si el ajuste difiere, consulta tu versión de LMU; no instales el antiguo plugin de rFactor 2. La consulta es puntual, no un monitor continuo.
+2. **Graba antes de conducir.** En **Profile name**, escribe un nombre nuevo, como `mi-vuelta`, y pulsa **Start recording**. Espera el siguiente paso por meta; conduce una vuelta completa, limpia y conservadora hasta el paso posterior. La grabación termina sola en **Draft ready** y guarda `recordings/mi-vuelta.json`. No reproduce señales ni pide intervención. **No mires ni uses la ventana mientras conduces.** Una cancelación observada antes de iniciar la persistencia, o una grabación discontinua, no produce un nuevo borrador; una cancelación durante la escritura final puede dejar el borrador completo.
+3. **Revisa detenido.** La tabla se carga al terminar. Revisa o corrige cada nombre y los metros desde el inicio de vuelta en **Brake**, **Release brake** y **Throttle**. Deben ser valores finitos no negativos, estrictamente crecientes, con nombres únicos y sin solapamiento entre curvas. Si no hay candidatos completos, graba otra vuelta.
+4. **Confirma y guarda.** Elige **Output profile name**, pulsa **Confirm and save profile** y acepta solo tras revisar la advertencia. Se guarda `profiles/<nombre>.json`. Cancelar el diálogo no guarda. Si el perfil existe, se solicita otra confirmación para reemplazarlo: **es irreversible**. La GUI no reemplaza borradores existentes; usa otro nombre de grabación.
+5. **Activa las señales detenido, antes del primer marcador.** Selecciona el perfil confirmado en **Drive cues** (usa **Refresh profiles** si hace falta) y pulsa **Start cues**. Comprueba el estado **Active** y valida una vuelta controlada: tono grave de freno, par descendente al soltarlo y tono agudo de gas. Los borradores no se pueden reproducir.
+6. **Detén el coche antes de operar la ventana.** Usa **Stop cues** para parar las señales o **Cancel** para cancelar una operación. Espera a que termine la limpieza. Al cerrar la ventana se solicita la cancelación y se espera al trabajador para liberar el lector; el cierre puede no ser inmediato. Las acciones incompatibles quedan deshabilitadas durante grabación y reproducción.
+
+> **Confirmado no significa calibrado:** «vuelta limpia» solo acredita continuidad de la telemetría observada, no validez deportiva. Los candidatos no son puntos seguros de frenada. Confirma únicamente detenido y después valida tus referencias en condiciones controladas; guardarlas no demuestra su seguridad.
+
+Conserva borrador y perfil: son artefactos JSON, no archivos que debas editar a mano. La GUI revisa la grabación recién terminada; para reabrir un borrador anterior, utiliza el asistente CLI.
+
+## Referencia CLI: diagnóstico y automatización
+
+Antepon `python -m lmu_corner_cues` a cada comando:
+
+| Comando | Uso |
+|---|---|
+| `--help` | Ayuda general. |
+| `gui` | Abrir la interfaz gráfica (Windows/Tkinter). |
+| `session` | Consultar una vez la sesión y sus identificadores. |
+| `record mi-vuelta` | Grabar automáticamente de meta a meta. |
+| `profile create recordings/mi-vuelta.json` | Revisar un borrador: `STOPPED` confirma que estás detenido; Enter acepta cada valor; solo `SAVE` guarda. `cancel`, Ctrl+C o fin de entrada cancelan. |
+| `drive profiles/mi-perfil.json` | Reproducir referencias confirmadas; detener el coche antes de cerrar con Ctrl+C. |
 
 ## Opciones avanzadas y límites
 
@@ -44,31 +46,32 @@ Necesitas Windows y Python **3.9 o superior**. Abre PowerShell en la carpeta del
 - El perfil conserva el circuito y vehículo exactos observados. El formato avanzado permite vehículo/clase o cualquier vehículo si se omite; el asistente usa siempre el vehículo concreto. Los identificadores distinguen mayúsculas. Repite la revisión y validación si cambian coche, setup, combustible, neumáticos, clima o agarre.
 - El formato exportado contiene `circuit`, `vehicle` y `markers`: nombres únicos y distancias numéricas finitas no negativas `BRAKE < RELEASE_BRAKE < THROTTLE`. Cada curva comienza después del gas de la anterior. No se verifica la longitud del circuito ni la seguridad de los metros. [`profiles/example.json`](profiles/example.json) es ficticio, no está calibrado y no debe usarse como referencia real.
 - Las señales dependen solo de vuelta y distancia: no filtran boxes, pausas, repeticiones ni peligros. Al arrancar a mitad de vuelta pueden sonar todos los marcadores ya alcanzados. Empieza antes del primero; ignora cualquier ráfaga atrasada. Una reducción de distancia en la misma vuelta silencia las señales hasta cambiar el contador de vuelta.
-- Los pitidos bloquean el muestreo mientras suenan y pueden llegar tarde. Se emiten una vez por vuelta; reinicia el programa al cambiar de sesión o perfil. No hay reconexión automática ni garantía de tiempo real. Nunca consultes el terminal ni ajustes referencias mientras conduces.
+- Los pitidos bloquean el muestreo mientras suenan y pueden llegar tarde, aunque la GUI use un trabajador independiente. Se emiten una vez por vuelta; detén y reinicia las señales al cambiar de sesión o perfil. No hay reconexión automática ni garantía de tiempo real. Nunca consultes la ventana o el terminal ni ajustes referencias mientras conduces.
 
-## Validación manual exacta en Windows/LMU
+## Validación manual pendiente en Windows/LMU
 
 **La compatibilidad real del ABI nativo y los sonidos todavía requieren esta prueba manual. No se ha realizado una prueba en vivo en este entorno de desarrollo.** Las pruebas sintéticas y `--help` no demuestran compatibilidad con tu versión instalada de LMU.
 
-1. En un entorno limpio de Python en Windows, ejecuta `pip install .` y `python -m lmu_corner_cues --help`. No instales otros paquetes de telemetría.
-2. Activa la memoria nativa, reinicia LMU y entra en una práctica privada con coche local. Detenido, ejecuta `python -m lmu_corner_cues session`. Anota versión de LMU, versión de Python, circuito, vehículo/clase y distancia mostrados. Comprueba que no hay errores de `LMU_Data`, tamaño/disposición incompatible ni jugador local.
-3. Detenido, ejecuta `python -m lmu_corner_cues record validacion`. Cruza meta, conduce una vuelta completa limpia y cruza meta de nuevo sin tocar el terminal. Detén el coche y comprueba que el proceso terminó y guardó `recordings/validacion.json` como borrador no verificado.
-4. Ejecuta `python -m lmu_corner_cues profile create recordings/validacion.json`. Revisa todos los candidatos, acepta o corrige nombres y metros y usa `cancel`: confirma que no apareció un perfil. Repite, elige `validacion` y confirma con `SAVE`; comprueba `profiles/validacion.json`. Repite sin `--overwrite` para comprobar que no lo reemplaza y cancela.
-5. Detenido antes del primer marcador, ejecuta `python -m lmu_corner_cues drive profiles/validacion.json`. Confirma los tres sonidos en las distancias revisadas: grave de freno (440 Hz), par descendente de liberación (880/660 Hz) y agudo de gas (1320 Hz). Verifica que no se repiten en muestras consecutivas y vuelven a sonar en la siguiente vuelta. El silencio por sí solo no prueba conexión.
-6. Detén el coche, cierra con Ctrl+C y anota perfil, versión del proyecto, resultado de conexión, distancias y sonidos observados. Si hay diferencias, no dependas del perfil: revisa detenido y repite la prueba.
+1. Instala en Windows y abre `python -m lmu_corner_cues gui` primero sin LMU: comprueba que la ventana abre y muestra un error accionable al consultar la conexión. Después inicia una práctica con telemetría habilitada y repite **Check connection**. Anota versiones de LMU/Python/proyecto e identificadores observados.
+2. Sigue el inicio rápido con el nombre `validacion`. Comprueba la espera de meta, grabación autónoma, **Draft ready** y archivo `recordings/validacion.json`; revisa siempre detenido.
+3. Cancela la confirmación de guardado y comprueba que no aparece un perfil. Repite y confirma `profiles/validacion.json`. Intenta guardarlo otra vez y rechaza el reemplazo: debe conservarse. Intenta grabar con el mismo nombre de borrador: debe rechazarse sin reemplazarlo.
+4. Selecciona el perfil y activa las señales antes del primer marcador. Comprueba freno (440 Hz), liberación (880/660 Hz) y gas (1320 Hz), sin repeticiones en muestras consecutivas y con repetición en la siguiente vuelta. El silencio por sí solo no prueba conexión.
+5. Detenido, comprueba **Stop cues**, cancelación de una nueva grabación y cierre de la ventana con un trabajador activo; verifica que termina el proceso y no aparece un borrador parcial. Comprueba también que la ventana responde y bloquea acciones incompatibles durante las operaciones.
+6. Anota resultados de conexión, archivos, distancias, sonidos y cierre. Si hay diferencias, no dependas del perfil: revisa detenido y repite la prueba.
 
 ## Resolución de problemas
 
 | Síntoma | Acción |
 |---|---|
 | `No module named lmu_corner_cues` | Instala y ejecuta con el mismo entorno de Python. |
+| La GUI requiere Windows o no encuentra Tkinter | Usa Python para Windows con soporte Tcl/Tk instalado; la GUI no es multiplataforma. |
 | Error de `LMU_Data` o plataforma Windows | Usa el PC Windows con LMU, salida nativa habilitada y sesión de conducción activa. |
 | Tamaño/disposición incompatible o jugador local inválido | No fuerces la lectura. Comprueba versión del juego y compatibilidad del lector nativo; vuelve a entrar al coche y reinicia el comando. |
 | Circuito/vehículo no coincide | Comprueba los identificadores con `session`; graba y revisa un perfil para esa combinación. |
 | Borrador inválido o sin candidatos | Usa la salida de `record`, no un perfil confirmado; repite una vuelta completa con secuencias de freno, liberación y gas. |
 | Distancias o nombres inválidos | Corrige en el asistente: nombres únicos, metros finitos y secuencias estrictamente crecientes sin solaparse. |
 | Grabación/asistente activo o puerto 47863 ocupado | Termina el otro comando antes de reintentar. Se reserva un puerto de bucle local como exclusión entre procesos, sin escuchar ni transmitir datos; si otro programa lo ocupa, se rechaza la operación por seguridad. |
-| Archivo ya existente | Elige otro nombre o usa explícitamente `--overwrite`. |
+| Archivo ya existente | GUI: otro nombre para el borrador; reemplazo de perfil solo con confirmación explícita. CLI: `--overwrite`. |
 | Intervalo inválido | Usa un valor finito y positivo, por ejemplo `--interval 0.02`. |
 | Sin audio o audio tardío | Comprueba salida y volumen de Windows, proceso activo y distancia alcanzada. Revisa los límites de muestreo y vuelta indicados arriba. |
 
