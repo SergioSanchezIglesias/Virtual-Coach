@@ -6,6 +6,7 @@ import sys
 import unittest
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from threading import Event
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -17,7 +18,7 @@ from lmu_corner_cues.audio import PATTERNS, BeepSink
 from lmu_corner_cues.engine import Cue
 from lmu_corner_cues.lmu import LMUReader, Snapshot, TelemetryError
 from lmu_corner_cues.profile import CornerMarker, Profile
-from lmu_corner_cues.runtime import _closing_reader, run
+from lmu_corner_cues.runtime import OperationCancelled, _closing_reader, run
 
 
 class RuntimeTests(unittest.TestCase):
@@ -27,6 +28,37 @@ class RuntimeTests(unittest.TestCase):
 
     def native(self, index=0, player=True, track=b"Track"):
         return RawMap(index=index, player=player, track=track)
+
+    def test_pre_cancelled_runtime_closes_without_connecting(self):
+        cancel = Event()
+        cancel.set()
+        reader, sink = Mock(), Mock()
+        with self.assertRaises(OperationCancelled):
+            run(self.profile, reader, sink, cancel=cancel)
+        reader.connect.assert_not_called()
+        sink.play.assert_not_called()
+        reader.close.assert_called_once_with()
+
+    def test_cancel_after_first_cue_prevents_remaining_audio(self):
+        cancel = Event()
+        reader, sink = Mock(), Mock()
+        reader.read.return_value = self.sample
+        sink.play.side_effect = lambda cue: cancel.set()
+        with self.assertRaises(OperationCancelled):
+            run(self.profile, reader, sink, cancel=cancel)
+        self.assertEqual(sink.play.call_count, 1)
+        reader.close.assert_called_once_with()
+
+    def test_cancellable_wait_replaces_uninterruptible_sleep(self):
+        cancel = Mock()
+        cancel.is_set.side_effect = [False, False, False, False, False, False, True]
+        reader, sink, sleep = Mock(), Mock(), Mock()
+        reader.read.return_value = self.sample
+        with self.assertRaises(OperationCancelled):
+            run(self.profile, reader, sink, interval=60, sleep=sleep, cancel=cancel)
+        cancel.wait.assert_called_once_with(60)
+        sleep.assert_not_called()
+        reader.close.assert_called_once_with()
 
     def test_snapshot_is_immutable(self):
         with self.assertRaises(FrozenInstanceError):

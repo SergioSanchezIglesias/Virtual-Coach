@@ -4,12 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from .application import load_profile, probe, record, run
 from .audio import BeepSink
 from .lmu import LMUReader
-from .profile import Profile
-from .recording import record
-from .runtime import run
-from .session import probe
 from .wizard import create_profile, stopped_flow_guard
 
 
@@ -46,7 +43,7 @@ def main(argv=None):
             with stopped_flow_guard():
                 create_profile(args.draft, overwrite=args.overwrite)
         else:
-            profile = Profile.from_json(args.profile.read_text(encoding="utf-8"))
+            profile = load_profile(args.profile)
             run(profile, LMUReader(), BeepSink(), args.interval)
     except KeyboardInterrupt:
         return 0

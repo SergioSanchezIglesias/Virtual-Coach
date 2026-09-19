@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from .profile import CUE_NAMES, CornerMarker
-from .runtime import _closing_reader
+from .runtime import _closing_reader, check_cancelled, wait_interval
 from .session import describe
 
 BRAKE_ON = 0.20
@@ -36,7 +36,12 @@ def _identity(sample):
 
 
 def record(name, reader, interval=0.02, *, directory=Path("recordings"),
-           overwrite=False, sleep=time.sleep, clock=time.monotonic, report=print):
+           overwrite=False, sleep=time.sleep, clock=time.monotonic, report=print,
+           cancel=None):
+    """Record on the caller's thread; optional Event cancellation discards the lap.
+
+    Cancellation is checked before persistence, not during the authorized write.
+    """
     if not math.isfinite(interval) or interval <= 0:
         raise ValueError("Polling interval must be a finite positive number of seconds.")
     path = draft_path(name, directory)
@@ -47,8 +52,11 @@ def record(name, reader, interval=0.02, *, directory=Path("recordings"),
     release = None
     recording_lap = None
     with _closing_reader(reader):
+        check_cancelled(cancel)
         reader.connect()
+        check_cancelled(cancel)
         previous = reader.read()
+        check_cancelled(cancel)
         identity = _identity(previous)
         report(describe(previous))
         report("Waiting for the next lap boundary; drive without terminal input. "
@@ -56,8 +64,9 @@ def record(name, reader, interval=0.02, *, directory=Path("recordings"),
                "Sporting lap validity is not available; drive a clean lap.")
         started = clock()
         while True:
-            sleep(interval)
+            wait_interval(interval, sleep, cancel)
             sample = reader.read()
+            check_cancelled(cancel)
             if _identity(sample) != identity:
                 raise ValueError("Session identity changed; recording discarded.")
             delta = sample.lap - previous.lap
@@ -94,6 +103,7 @@ def record(name, reader, interval=0.02, *, directory=Path("recordings"),
         "candidates": [{"name": m.name, **{cue: m.distances[index] for index, cue in enumerate(CUE_NAMES)}} for m in markers],
     }
     text = json.dumps(draft, indent=2, allow_nan=False) + "\n"
+    check_cancelled(cancel)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Exclusive creation protects against a draft appearing during the lap.
     with path.open("w" if overwrite else "x", encoding="utf-8") as output:
