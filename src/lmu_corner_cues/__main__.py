@@ -14,6 +14,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Inspect LMU, record uncalibrated drafts, or play corner cues.")
     parser.add_argument("--interval", type=float, default=0.02, help="positive polling interval in seconds (default: 0.02)")
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("gui", help="open the Windows Tkinter desktop interface")
     commands.add_parser("session", help="show observed session identity without audio or files")
     drive = commands.add_parser("drive", help="drive using a calibrated JSON profile")
     drive.add_argument("profile", type=Path)
@@ -30,11 +31,14 @@ def main(argv=None):
         command.add_argument("--interval", type=float, default=argparse.SUPPRESS, help="positive polling interval in seconds")
     arguments = list(sys.argv[1:] if argv is None else argv)
     # Preserve the original PROFILE.json invocation as well as drive PROFILE.
-    if arguments and arguments[0] not in {"session", "record", "drive", "profile"} and not arguments[0].startswith("-"):
+    if arguments and arguments[0] not in {"session", "record", "drive", "profile", "gui"} and not arguments[0].startswith("-"):
         arguments.insert(0, "drive")
     args = parser.parse_args(arguments)
     try:
-        if args.command == "session":
+        if args.command == "gui":
+            from .gui import launch
+            launch()
+        elif args.command == "session":
             probe(LMUReader())
         elif args.command == "record":
             with stopped_flow_guard():
