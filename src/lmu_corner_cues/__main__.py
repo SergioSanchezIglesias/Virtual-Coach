@@ -1,4 +1,4 @@
-"""Run with python -m lmu_corner_cues PROFILE.json."""
+"""Session inspection, automatic draft recording, and profile driving."""
 
 import argparse
 import sys
@@ -7,17 +7,36 @@ from pathlib import Path
 from .audio import BeepSink
 from .lmu import LMUReader
 from .profile import Profile
+from .recording import record
 from .runtime import run
+from .session import probe
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Read LMU telemetry and play corner cues on Windows.")
-    parser.add_argument("profile", type=Path, help="JSON corner profile for the current track and vehicle/class")
+    parser = argparse.ArgumentParser(description="Inspect LMU, record uncalibrated drafts, or play corner cues.")
     parser.add_argument("--interval", type=float, default=0.02, help="positive polling interval in seconds (default: 0.02)")
-    args = parser.parse_args(argv)
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("session", help="show observed session identity without audio or files")
+    drive = commands.add_parser("drive", help="drive using a calibrated JSON profile")
+    drive.add_argument("profile", type=Path)
+    recording = commands.add_parser("record", help="automatically record one lap as an uncalibrated draft")
+    recording.add_argument("name", help="safe draft name (letters, digits, hyphens, underscores)")
+    recording.add_argument("--overwrite", action="store_true", help="explicitly permit replacing an existing draft")
+    for command in (drive, recording):
+        command.add_argument("--interval", type=float, default=argparse.SUPPRESS, help="positive polling interval in seconds")
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    # Preserve the original PROFILE.json invocation as well as drive PROFILE.
+    if arguments and arguments[0] not in {"session", "record", "drive"} and not arguments[0].startswith("-"):
+        arguments.insert(0, "drive")
+    args = parser.parse_args(arguments)
     try:
-        profile = Profile.from_json(args.profile.read_text(encoding="utf-8"))
-        run(profile, LMUReader(), BeepSink(), args.interval)
+        if args.command == "session":
+            probe(LMUReader())
+        elif args.command == "record":
+            record(args.name, LMUReader(), args.interval, overwrite=args.overwrite)
+        else:
+            profile = Profile.from_json(args.profile.read_text(encoding="utf-8"))
+            run(profile, LMUReader(), BeepSink(), args.interval)
     except KeyboardInterrupt:
         return 0
     except (OSError, ValueError, RuntimeError) as exc:

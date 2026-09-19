@@ -24,11 +24,11 @@ Make `pip install .` sufficient for LMU Corner Cues, remove the unusable VCS ins
   - Checks: focused native-adapter tests and full unit suite.
   - Evidence: writer and independent recheck passed 33 tests. Player association, sentinel IDs, pedal range, and lap/distance validation are covered. Live Windows/LMU compatibility is explicitly deferred to T4 because synthetic fixtures cannot prove the producer ABI.
 
-- [ ] **T2 — Add session probe and one-lap recording**
+- [x] **T2 — Add session probe and one-lap recording**
   - Route: delegated (`gentle-ai-worker`); trigger: multi-file write.
   - Add commands that show observed circuit/vehicle/lap distance and record pedal transitions for one clean lap without user input while driving.
   - Checks: fake-reader recorder/probe tests and CLI help.
-  - Evidence: pending.
+  - Evidence: independent verification passed: 45 tests, CLI help, and unchanged Git state. Continuity-only drafts are explicitly unverified/non-calibrated and cannot drive cues.
 
 - [ ] **T3 — Add stopped profile wizard and rewrite onboarding**
   - Route: delegated (`gentle-ai-worker`); trigger: multi-file write.
@@ -48,7 +48,9 @@ Make `pip install .` sufficient for LMU Corner Cues, remove the unusable VCS ins
 - Existing driving cues still run from the saved profile.
 
 ## Progress
-- No implementation has started.
+- T1 committed as `c704281 feat(lmu): bundle native telemetry reader`.
+- T2 is complete pending its work-unit commit.
+- T3 is next.
 
 ## Next step
-Delegate T1 with bounded local-adapter surfaces.
+Commit T2, then delegate the stopped profile wizard and onboarding rewrite.

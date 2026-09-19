@@ -147,6 +147,11 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(exit_info.exception.code, 0)
         self.assertIn("--interval", output.getvalue())
 
+    def test_explicit_drive_command_preserves_runtime(self):
+        with patch("pathlib.Path.read_text", return_value=self.profile.to_json()), patch("lmu_corner_cues.__main__.run") as runner, patch("lmu_corner_cues.__main__.LMUReader") as reader, patch("lmu_corner_cues.__main__.BeepSink") as audio:
+            self.assertEqual(main(["drive", "profile.json", "--interval", "0.1"]), 0)
+        runner.assert_called_once_with(self.profile, reader.return_value, audio.return_value, .1)
+
     def test_cli_reports_errors_and_handles_interrupt(self):
         for error in (TelemetryError("Cannot open LMU_Data"), KeyboardInterrupt()):
             with patch("pathlib.Path.read_text", return_value=self.profile.to_json()), patch("lmu_corner_cues.__main__.run", side_effect=error), contextlib.redirect_stderr(io.StringIO()) as output:
