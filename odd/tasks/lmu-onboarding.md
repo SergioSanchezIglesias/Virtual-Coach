@@ -30,11 +30,11 @@ Make `pip install .` sufficient for LMU Corner Cues, remove the unusable VCS ins
   - Checks: fake-reader recorder/probe tests and CLI help.
   - Evidence: independent verification passed: 45 tests, CLI help, and unchanged Git state. Continuity-only drafts are explicitly unverified/non-calibrated and cannot drive cues.
 
-- [ ] **T3 — Add stopped profile wizard and rewrite onboarding**
+- [x] **T3 — Add stopped profile wizard and rewrite onboarding**
   - Route: delegated (`gentle-ai-worker`); trigger: multi-file write.
   - Turn recorded candidates into a confirmed profile through a stopped wizard; update README so a user never needs to edit JSON or install upstream Git code.
   - Checks: wizard/profile tests, README command consistency, CLI help.
-  - Evidence: pending.
+  - Evidence: independent verification passed: 56 tests, CLI help, no unexpected mutations or bytecode. The README now uses only `pip install .`; live acceptance remains T4.
 
 - [ ] **T4 — Perform live Windows/LMU acceptance validation**
   - Route: user-operated manual validation; no terminal interaction while driving.
@@ -49,8 +49,8 @@ Make `pip install .` sufficient for LMU Corner Cues, remove the unusable VCS ins
 
 ## Progress
 - T1 committed as `c704281 feat(lmu): bundle native telemetry reader`.
-- T2 is complete pending its work-unit commit.
-- T3 is next.
+- T2 committed as `2bb1dbf feat(lmu): add session probe and lap recorder`.
+- T3 is complete pending its work-unit commit.
 
 ## Next step
-Commit T2, then delegate the stopped profile wizard and onboarding rewrite.
+Commit T3 and perform T4 manual Windows/LMU acceptance validation.

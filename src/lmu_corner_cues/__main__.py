@@ -1,4 +1,4 @@
-"""Session inspection, automatic draft recording, and profile driving."""
+"""Session inspection, automatic recording, stopped profile review, and driving."""
 
 import argparse
 import sys
@@ -10,6 +10,7 @@ from .profile import Profile
 from .recording import record
 from .runtime import run
 from .session import probe
+from .wizard import create_profile, stopped_flow_guard
 
 
 def main(argv=None):
@@ -22,18 +23,28 @@ def main(argv=None):
     recording = commands.add_parser("record", help="automatically record one lap as an uncalibrated draft")
     recording.add_argument("name", help="safe draft name (letters, digits, hyphens, underscores)")
     recording.add_argument("--overwrite", action="store_true", help="explicitly permit replacing an existing draft")
+    profiles = commands.add_parser("profile", help="review recorded candidates while stopped; no JSON editing needed")
+    profile_commands = profiles.add_subparsers(dest="profile_command", required=True)
+    create = profile_commands.add_parser("create", help="turn an unverified draft into a confirmed driving profile",
+        description="After record exits, stop driving and review each label and distance in meters. Nothing is saved without explicit confirmation; type cancel to exit.")
+    create.add_argument("draft", type=Path, help="completed unverified draft, e.g. recordings/lap.json")
+    create.add_argument("--overwrite", action="store_true", help="permit replacement of the chosen profiles/<name>.json after confirmation")
     for command in (drive, recording):
         command.add_argument("--interval", type=float, default=argparse.SUPPRESS, help="positive polling interval in seconds")
     arguments = list(sys.argv[1:] if argv is None else argv)
     # Preserve the original PROFILE.json invocation as well as drive PROFILE.
-    if arguments and arguments[0] not in {"session", "record", "drive"} and not arguments[0].startswith("-"):
+    if arguments and arguments[0] not in {"session", "record", "drive", "profile"} and not arguments[0].startswith("-"):
         arguments.insert(0, "drive")
     args = parser.parse_args(arguments)
     try:
         if args.command == "session":
             probe(LMUReader())
         elif args.command == "record":
-            record(args.name, LMUReader(), args.interval, overwrite=args.overwrite)
+            with stopped_flow_guard():
+                record(args.name, LMUReader(), args.interval, overwrite=args.overwrite)
+        elif args.command == "profile":
+            with stopped_flow_guard():
+                create_profile(args.draft, overwrite=args.overwrite)
         else:
             profile = Profile.from_json(args.profile.read_text(encoding="utf-8"))
             run(profile, LMUReader(), BeepSink(), args.interval)
