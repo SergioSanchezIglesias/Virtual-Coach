@@ -6,10 +6,11 @@ import sys
 import unittest
 from dataclasses import FrozenInstanceError
 from pathlib import Path
-from types import SimpleNamespace as NS
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from test_native_layout import RawMap
 
 from lmu_corner_cues.__main__ import main
 from lmu_corner_cues.audio import PATTERNS, BeepSink
@@ -25,10 +26,7 @@ class RuntimeTests(unittest.TestCase):
         self.sample = Snapshot("Track", "Car", "GT3", 2, 35)
 
     def native(self, index=0, player=True, track=b"Track"):
-        return NS(LMUData=NS(
-            telemetry=NS(playerVehicleIdx=index, telemInfo=[NS(mTrackName=track, mVehicleName=b"Car")]),
-            scoring=NS(vehScoringInfo=[NS(mIsPlayer=player, mVehicleClass=b"GT3", mTotalLaps=2, mLapDist=35)]),
-        ), close=Mock())
+        return RawMap(index=index, player=player, track=track)
 
     def test_snapshot_is_immutable(self):
         with self.assertRaises(FrozenInstanceError):
@@ -47,14 +45,14 @@ class RuntimeTests(unittest.TestCase):
         reader.close()
         info.close.assert_called_once_with()
 
-    def test_missing_dependency_and_map(self):
-        with patch.dict(sys.modules, {"pyLMUSharedMemory": None}), self.assertRaisesRegex(TelemetryError, "Install.*pyLMUSharedMemory"):
+    def test_unsupported_platform_and_missing_map(self):
+        with patch("lmu_corner_cues.lmu.sys.platform", "darwin"), self.assertRaisesRegex(TelemetryError, "Windows"):
             LMUReader().connect()
         with self.assertRaisesRegex(TelemetryError, "LMU_Data"):
             LMUReader(Mock(side_effect=OSError("missing map"))).connect()
 
     def test_no_player_or_missing_identity(self):
-        for info in (self.native(index=-1), self.native(index=1), self.native(player=False), self.native(track=b"")):
+        for info in (self.native(index=104), self.native(index=255), self.native(player=False), self.native(track=b"")):
             with self.subTest(info=info):
                 reader = LMUReader(lambda info=info: info)
                 reader.connect()
@@ -62,7 +60,7 @@ class RuntimeTests(unittest.TestCase):
                     reader.read()
                 reader.close()
         info = self.native()
-        info.LMUData.telemetry.telemInfo[0].mVehicleName = b""
+        info[128468 + 32:128468 + 96] = bytes(64)
         reader = LMUReader(lambda: info)
         reader.connect()
         with self.assertRaises(TelemetryError):
@@ -150,11 +148,11 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("--interval", output.getvalue())
 
     def test_cli_reports_errors_and_handles_interrupt(self):
-        for error in (TelemetryError("Install pyLMUSharedMemory"), KeyboardInterrupt()):
+        for error in (TelemetryError("Cannot open LMU_Data"), KeyboardInterrupt()):
             with patch("pathlib.Path.read_text", return_value=self.profile.to_json()), patch("lmu_corner_cues.__main__.run", side_effect=error), contextlib.redirect_stderr(io.StringIO()) as output:
                 self.assertEqual(main(["profile.json"]), 0 if isinstance(error, KeyboardInterrupt) else 1)
             if isinstance(error, TelemetryError):
-                self.assertIn("Install pyLMUSharedMemory", output.getvalue())
+                self.assertIn("Cannot open LMU_Data", output.getvalue())
 
 
 if __name__ == "__main__":
